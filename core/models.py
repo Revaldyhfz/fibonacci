@@ -1,5 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import User
+from decimal import Decimal
 
 
 class Strategy(models.Model):
@@ -19,6 +20,7 @@ class Trade(models.Model):
     symbol = models.CharField(max_length=20)
     strategy = models.ForeignKey(Strategy, on_delete=models.SET_NULL, null=True, blank=True)
     trade_date = models.DateTimeField()  # When trade opened
+    time = models.TimeField(editable=False, null=True, blank=True)  # Auto-set trade time
     close_date = models.DateTimeField(null=True, blank=True)  # When trade closed (optional)
     entry_price = models.DecimalField(max_digits=12, decimal_places=4)
     exit_price = models.DecimalField(max_digits=12, decimal_places=4, null=True, blank=True)
@@ -32,8 +34,6 @@ class Trade(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-    from decimal import Decimal
-
     def save(self, *args, **kwargs):
         """Auto-calculate PnL and PnL% when saving (decimal-safe)."""
         if self.exit_price and self.entry_price and self.position_size:
@@ -44,8 +44,10 @@ class Trade(models.Model):
             self.pnl = (exit - entry) * size - fees
             if entry > 0:
                 self.pnl_percent = ((exit - entry) / entry) * Decimal(100)
+        # Auto-fill time from trade_date
+        if self.trade_date and not self.time:
+            self.time = self.trade_date.time()
         super().save(*args, **kwargs)
-
     @property
     def is_winner(self):
         """Return True if trade has positive PnL."""
