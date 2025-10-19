@@ -32,17 +32,26 @@ class Trade(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    from decimal import Decimal
+
     def save(self, *args, **kwargs):
-        """Auto-calculate PnL and PnL% when saving."""
+        """Auto-calculate PnL and PnL% when saving (decimal-safe)."""
         if self.exit_price and self.entry_price and self.position_size:
-            self.pnl = (self.exit_price - self.entry_price) * self.position_size - float(self.fees)
-            if self.entry_price > 0:
-                self.pnl_percent = ((self.exit_price - self.entry_price) / self.entry_price) * 100
+            entry = Decimal(self.entry_price)
+            exit = Decimal(self.exit_price)
+            size = Decimal(self.position_size)
+            fees = Decimal(self.fees or 0)
+            self.pnl = (exit - entry) * size - fees
+            if entry > 0:
+                self.pnl_percent = ((exit - entry) / entry) * Decimal(100)
         super().save(*args, **kwargs)
 
     @property
     def is_winner(self):
-        return self.pnl > 0
-
+        """Return True if trade has positive PnL."""
+        try:
+            return self.pnl > 0
+        except (TypeError, ValueError):
+            return False
     def __str__(self):
         return f"{self.symbol} ({self.trade_date.strftime('%Y-%m-%d')})"
