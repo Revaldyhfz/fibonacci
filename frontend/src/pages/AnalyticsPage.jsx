@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
 export default function AnalyticsPage() {
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
   const nav = useNavigate();
   const [timeFilter, setTimeFilter] = useState("all");
   const [overallStats, setOverallStats] = useState(null);
@@ -28,24 +28,14 @@ export default function AnalyticsPage() {
 
       const headers = { Authorization: `Bearer ${tokens.access}` };
       
-      console.log("Fetching analytics data...");
-      
-      // Fetch all endpoints
       const [overallRes, sessionsRes, symbolsRes] = await Promise.all([
         fetch("http://127.0.0.1:8000/analytics/stats/overall", { headers }),
         fetch("http://127.0.0.1:8000/analytics/stats/session", { headers }),
         fetch("http://127.0.0.1:8000/analytics/stats/symbol", { headers })
       ]);
 
-      console.log("Response statuses:", {
-        overall: overallRes.status,
-        sessions: sessionsRes.status,
-        symbols: symbolsRes.status
-      });
-
-      // Check if all responses are ok
       if (!overallRes.ok || !sessionsRes.ok || !symbolsRes.ok) {
-        throw new Error(`Failed to fetch analytics: Overall(${overallRes.status}), Sessions(${sessionsRes.status}), Symbols(${symbolsRes.status})`);
+        throw new Error(`Failed to fetch analytics`);
       }
 
       const [overall, sessions, symbols] = await Promise.all([
@@ -54,17 +44,27 @@ export default function AnalyticsPage() {
         symbolsRes.json()
       ]);
 
-      console.log("Analytics data received:", { overall, sessions, symbols });
+      // Filter by time period
+      let filteredData = { overall, sessions, symbols };
+      if (timeFilter !== "all") {
+        filteredData = filterByTimePeriod(overall, sessions, symbols, timeFilter);
+      }
 
-      setOverallStats(overall);
-      setSessionStats(sessions);
-      setSymbolStats(symbols);
+      setOverallStats(filteredData.overall);
+      setSessionStats(filteredData.sessions);
+      setSymbolStats(filteredData.symbols);
     } catch (error) {
       console.error("Failed to fetch analytics:", error);
       setError(error.message);
     } finally {
       setLoading(false);
     }
+  };
+
+  const filterByTimePeriod = (overall, sessions, symbols, period) => {
+    // This is a simplified version - you'd need to fetch filtered data from backend
+    // For now, just return the same data
+    return { overall, sessions, symbols };
   };
 
   if (loading) {
@@ -84,14 +84,6 @@ export default function AnalyticsPage() {
         <div className="bg-[#141414] border border-red-500/30 rounded-xl p-8 max-w-md">
           <div className="text-red-500 text-xl font-bold mb-4">⚠️ Analytics Error</div>
           <p className="text-neutral-300 mb-4">{error}</p>
-          <div className="space-y-2 text-sm text-neutral-400 mb-6">
-            <p>Troubleshooting steps:</p>
-            <ol className="list-decimal list-inside space-y-1 ml-2">
-              <li>Make sure the analytics service is running on port 8001</li>
-              <li>Check if you have trades in your database</li>
-              <li>Verify your authentication token is valid</li>
-            </ol>
-          </div>
           <div className="flex gap-3">
             <button
               onClick={fetchAnalytics}
@@ -103,7 +95,7 @@ export default function AnalyticsPage() {
               onClick={() => nav("/dashboard")}
               className="flex-1 px-4 py-2 bg-neutral-700 hover:bg-neutral-600 text-white rounded-lg transition-colors"
             >
-              Go to Dashboard
+              Dashboard
             </button>
           </div>
         </div>
@@ -111,26 +103,33 @@ export default function AnalyticsPage() {
     );
   }
 
-  // Check if we have no data
   const hasNoData = !overallStats?.total_trades || overallStats.total_trades === 0;
 
   if (hasNoData) {
     return (
       <div className="min-h-screen bg-[#0a0a0a]">
-        <header className="border-b border-neutral-800 bg-[#141414]">
+        <header className="sticky top-0 z-50 border-b border-neutral-800 bg-[#141414]/95 backdrop-blur-sm shadow-lg">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <div className="flex h-16 items-center justify-between">
               <div className="flex items-center gap-8">
-                <h1 className="text-xl font-bold text-white">Trading Journal</h1>
+                <h1 className="text-xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+                  Trading Journal
+                </h1>
                 <nav className="hidden md:flex gap-6">
                   <Link to="/dashboard" className="text-sm text-neutral-400 hover:text-white transition-colors">Dashboard</Link>
                   <Link to="/trades" className="text-sm text-neutral-400 hover:text-white transition-colors">Trades</Link>
                   <Link to="/analytics" className="text-sm font-medium text-white">Analytics</Link>
                 </nav>
               </div>
-              <button onClick={() => { logout(); nav("/"); }} className="text-sm text-neutral-400 hover:text-white transition-colors">
-                Logout
-              </button>
+              <div className="flex items-center gap-4">
+                <div className="text-sm text-neutral-400">
+                  <span className="hidden sm:inline">Welcome, </span>
+                  <span className="font-medium text-white">{user?.username || 'Trader'}</span>
+                </div>
+                <button onClick={() => { logout(); nav("/"); }} className="text-sm px-3 py-1.5 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-lg transition-colors">
+                  Logout
+                </button>
+              </div>
             </div>
           </div>
         </header>
@@ -155,89 +154,93 @@ export default function AnalyticsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a]">
-      {/* Header */}
-      <header className="border-b border-neutral-800 bg-[#141414]">
+    <div className="min-h-screen bg-[#0a0a0a] pb-8">
+      <header className="sticky top-0 z-50 border-b border-neutral-800 bg-[#141414]/95 backdrop-blur-sm shadow-lg">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="flex h-16 items-center justify-between">
             <div className="flex items-center gap-8">
-              <h1 className="text-xl font-bold text-white">Trading Journal</h1>
+              <h1 className="text-xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+                Trading Journal
+              </h1>
               <nav className="hidden md:flex gap-6">
                 <Link to="/dashboard" className="text-sm text-neutral-400 hover:text-white transition-colors">Dashboard</Link>
                 <Link to="/trades" className="text-sm text-neutral-400 hover:text-white transition-colors">Trades</Link>
                 <Link to="/analytics" className="text-sm font-medium text-white">Analytics</Link>
               </nav>
             </div>
-            <button onClick={() => { logout(); nav("/"); }} className="text-sm text-neutral-400 hover:text-white transition-colors">
-              Logout
-            </button>
+            <div className="flex items-center gap-4">
+              <div className="text-sm text-neutral-400">
+                <span className="hidden sm:inline">Welcome, </span>
+                <span className="font-medium text-white">{user?.username || 'Trader'}</span>
+              </div>
+              <button onClick={() => { logout(); nav("/"); }} className="text-sm px-3 py-1.5 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-lg transition-colors">
+                Logout
+              </button>
+            </div>
           </div>
         </div>
       </header>
 
-      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        {/* Header with Filters */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-8 gap-4">
+      <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between my-6 gap-4">
           <div>
-            <h2 className="text-3xl font-bold text-white mb-2">Advanced Analytics</h2>
-            <p className="text-neutral-400">Deep insights into your trading performance</p>
+            <h2 className="text-2xl sm:text-3xl font-bold text-white mb-1">Advanced Analytics</h2>
+            <p className="text-sm text-neutral-400">Deep insights into your trading performance</p>
           </div>
           <div className="flex gap-2 flex-wrap">
             {["day", "week", "month", "all"].map((filter) => (
               <button
                 key={filter}
                 onClick={() => setTimeFilter(filter)}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
                   timeFilter === filter
                     ? "bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-lg shadow-blue-500/20"
                     : "bg-[#141414] border border-neutral-700 text-neutral-300 hover:border-neutral-600"
                 }`}
               >
-                {filter === "all" ? "All Time" : filter.charAt(0).toUpperCase() + filter.slice(1)}
+                {filter === "all" ? "All Time" : filter === "day" ? "Today" : filter === "week" ? "This Week" : "This Month"}
               </button>
             ))}
           </div>
         </div>
 
-        {/* Key Insight Banner */}
         {overallStats?.most_successful_session && (
-          <div className="mb-8 rounded-2xl bg-gradient-to-r from-blue-500/20 to-purple-600/20 border border-blue-500/30 p-6">
-            <div className="flex items-start gap-4">
+          <div className="mb-6 rounded-xl bg-gradient-to-r from-blue-500/20 to-purple-600/20 border border-blue-500/30 p-4">
+            <div className="flex items-start gap-3">
               <div className="flex-shrink-0">
-                <svg className="w-8 h-8 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
               </div>
               <div>
-                <h3 className="text-lg font-bold text-white mb-2">Key Insight</h3>
-                <p className="text-neutral-300">
-                  Your most successful trading session is {overallStats.most_successful_session}. Consider focusing more trades during this period for optimal results.
+                <h3 className="text-base font-bold text-white mb-1">Key Insight</h3>
+                <p className="text-sm text-neutral-300">
+                  Your most successful trading session is {overallStats.most_successful_session}. Consider focusing more trades during this period.
                 </p>
               </div>
             </div>
           </div>
         )}
 
-        {/* Strategy Performance */}
         {overallStats?.strategy_performance && Object.keys(overallStats.strategy_performance).length > 0 && (
-          <div className="mb-8 bg-[#141414] border border-neutral-800 rounded-2xl p-6">
-            <h3 className="text-xl font-bold text-white mb-6">Strategy Performance</h3>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="mb-6 bg-[#141414] border border-neutral-800 rounded-xl p-4">
+            <h3 className="text-lg font-bold text-white mb-4">Strategy Performance</h3>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {Object.entries(overallStats.strategy_performance).map(([name, stats]) => (
-                <div key={name} className="bg-[#0a0a0a] border border-neutral-800 rounded-xl p-5 hover:border-neutral-700 transition-colors">
-                  <div className="font-bold text-lg text-white mb-4">{name}</div>
-                  <div className="space-y-3">
+                <div key={name} className="bg-[#0a0a0a] border border-neutral-800 rounded-lg p-4 hover:border-neutral-700 transition-colors">
+                  <div className="font-bold text-base text-white mb-3">{name}</div>
+                  <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <span className="text-sm text-neutral-400">Win Rate</span>
-                      <span className="text-lg font-bold text-emerald-500">{stats.winrate}%</span>
+                      <span className="text-xs text-neutral-400">Win Rate</span>
+                      <span className="text-base font-bold text-emerald-500">{stats.winrate}%</span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="text-sm text-neutral-400">Total Trades</span>
-                      <span className="text-lg font-bold text-white">{stats.count}</span>
+                      <span className="text-xs text-neutral-400">Trades</span>
+                      <span className="text-base font-bold text-white">{stats.count}</span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="text-sm text-neutral-400">Avg P&L</span>
-                      <span className={`text-lg font-bold ${stats.avg_pnl >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                      <span className="text-xs text-neutral-400">Avg P&L</span>
+                      <span className={`text-base font-bold ${stats.avg_pnl >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
                         ${stats.avg_pnl}
                       </span>
                     </div>
@@ -248,52 +251,63 @@ export default function AnalyticsPage() {
           </div>
         )}
 
-        {/* Session Analysis */}
-        {sessionStats && Object.keys(sessionStats).length > 0 && (
-          <div className="mb-8 bg-[#141414] border border-neutral-800 rounded-2xl p-6">
-            <h3 className="text-xl font-bold text-white mb-6">Performance by Trading Session</h3>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              {Object.entries(sessionStats).map(([session, stats]) => (
-                <div key={session} className="bg-[#0a0a0a] border border-neutral-800 rounded-xl p-5 hover:border-neutral-700 transition-colors">
-                  <div className="font-bold text-lg text-white mb-4">{session}</div>
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-neutral-400">Trades</span>
-                      <span className="text-lg font-bold text-white">{stats.count}</span>
+        <div className="grid gap-6 lg:grid-cols-2 mb-6">
+          {sessionStats && Object.keys(sessionStats).length > 0 && (
+            <div className="bg-[#141414] border border-neutral-800 rounded-xl p-4">
+              <h3 className="text-lg font-bold text-white mb-4">Performance by Session</h3>
+              <div className="space-y-3">
+                {Object.entries(sessionStats).map(([session, stats]) => (
+                  <div key={session} className="bg-[#0a0a0a] border border-neutral-800 rounded-lg p-3 hover:border-neutral-700 transition-colors">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="font-bold text-base text-white">{session}</div>
+                      <div className="text-xs text-neutral-400">{stats.count} trades</div>
                     </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-neutral-400">Win Rate</span>
-                      <span className="text-lg font-bold text-emerald-500">{stats.winrate}%</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-neutral-400">Total P&L</span>
-                      <span className={`text-lg font-bold ${stats.pnl >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
-                        ${stats.pnl.toFixed(2)}
-                      </span>
+                    <div className="flex items-center gap-4">
+                      <div className="flex-1">
+                        <div className="text-xs text-neutral-400 mb-1">Win Rate</div>
+                        <div className="text-base font-bold text-emerald-500">{stats.winrate}%</div>
+                      </div>
+                      <div className="flex-1">
+                        <div className="text-xs text-neutral-400 mb-1">Total P&L</div>
+                        <div className={`text-base font-bold ${stats.pnl >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                          ${stats.pnl.toFixed(2)}
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Symbol Performance Table */}
+          {overallStats?.most_traded_symbol && (
+            <div className="bg-gradient-to-br from-blue-500/10 to-purple-600/10 border border-blue-500/30 rounded-xl p-4 flex flex-col justify-center">
+              <h3 className="text-base font-semibold text-neutral-300 mb-2">Most Traded Symbol</h3>
+              <div className="text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-400 mb-2">
+                {overallStats.most_traded_symbol}
+              </div>
+              <div className="text-sm text-neutral-400">
+                Focus symbol for {timeFilter === "all" ? "all time" : timeFilter === "day" ? "today" : `this ${timeFilter}`}
+              </div>
+            </div>
+          )}
+        </div>
+
         {symbolStats && Object.keys(symbolStats).length > 0 && (
-          <div className="mb-8 bg-[#141414] border border-neutral-800 rounded-2xl overflow-hidden">
-            <div className="p-6 border-b border-neutral-800">
-              <h3 className="text-xl font-bold text-white">Performance by Symbol</h3>
+          <div className="bg-[#141414] border border-neutral-800 rounded-xl overflow-hidden">
+            <div className="p-4 border-b border-neutral-800">
+              <h3 className="text-lg font-bold text-white">Performance by Symbol</h3>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead className="bg-[#0a0a0a]">
                   <tr>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-neutral-400 uppercase tracking-wider">Symbol</th>
-                    <th className="px-6 py-4 text-center text-xs font-semibold text-neutral-400 uppercase tracking-wider">Trades</th>
-                    <th className="px-6 py-4 text-center text-xs font-semibold text-neutral-400 uppercase tracking-wider">Wins</th>
-                    <th className="px-6 py-4 text-center text-xs font-semibold text-neutral-400 uppercase tracking-wider">Win Rate</th>
-                    <th className="px-6 py-4 text-right text-xs font-semibold text-neutral-400 uppercase tracking-wider">Avg P&L</th>
-                    <th className="px-6 py-4 text-right text-xs font-semibold text-neutral-400 uppercase tracking-wider">Total P&L</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-neutral-400 uppercase">Symbol</th>
+                    <th className="px-4 py-3 text-center text-xs font-semibold text-neutral-400 uppercase">Trades</th>
+                    <th className="px-4 py-3 text-center text-xs font-semibold text-neutral-400 uppercase">Wins</th>
+                    <th className="px-4 py-3 text-center text-xs font-semibold text-neutral-400 uppercase">Win Rate</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold text-neutral-400 uppercase">Avg P&L</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold text-neutral-400 uppercase">Total P&L</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-neutral-800">
@@ -301,34 +315,24 @@ export default function AnalyticsPage() {
                     .sort((a, b) => b[1].pnl - a[1].pnl)
                     .map(([symbol, stats]) => (
                       <tr key={symbol} className="hover:bg-[#0a0a0a] transition-colors">
-                        <td className="px-6 py-4 text-sm font-bold text-white">{symbol}</td>
-                        <td className="px-6 py-4 text-sm text-center text-neutral-300">{stats.count}</td>
-                        <td className="px-6 py-4 text-sm text-center text-neutral-300">{stats.wins}</td>
-                        <td className="px-6 py-4 text-sm text-center">
-                          <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-500">
+                        <td className="px-4 py-3 text-sm font-bold text-white">{symbol}</td>
+                        <td className="px-4 py-3 text-sm text-center text-neutral-300">{stats.count}</td>
+                        <td className="px-4 py-3 text-sm text-center text-neutral-300">{stats.wins}</td>
+                        <td className="px-4 py-3 text-sm text-center">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-500">
                             {stats.winrate}%
                           </span>
                         </td>
-                        <td className={`px-6 py-4 text-sm text-right font-medium ${stats.avg_pnl >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                        <td className={`px-4 py-3 text-sm text-right font-medium ${stats.avg_pnl >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
                           ${stats.avg_pnl}
                         </td>
-                        <td className={`px-6 py-4 text-sm text-right font-bold ${stats.pnl >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                        <td className={`px-4 py-3 text-sm text-right font-bold ${stats.pnl >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
                           ${stats.pnl.toFixed(2)}
                         </td>
                       </tr>
                     ))}
                 </tbody>
               </table>
-            </div>
-          </div>
-        )}
-
-        {/* Most Traded Symbol Card */}
-        {overallStats?.most_traded_symbol && (
-          <div className="bg-gradient-to-br from-blue-500/10 to-purple-600/10 border border-blue-500/30 rounded-2xl p-6">
-            <h3 className="text-lg font-semibold text-neutral-300 mb-2">Most Traded Symbol</h3>
-            <div className="text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-400">
-              {overallStats.most_traded_symbol}
             </div>
           </div>
         )}
