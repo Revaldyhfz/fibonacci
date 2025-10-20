@@ -1,47 +1,53 @@
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
-import { api } from "../lib/api";
+import { createContext, useContext, useState } from "react";
 
-const AuthContext = createContext(null);
+const AuthContext = createContext();
 
 export function AuthProvider({ children }) {
-  const [access, setAccess] = useState(() => localStorage.getItem("access"));
-  const [refresh, setRefresh] = useState(() => localStorage.getItem("refresh"));
-  const [user, setUser] = useState(null); // optional: store username later
-  const isAuthenticated = !!access;
-
-  // Persist to localStorage whenever tokens change
-  useEffect(() => {
-    if (access) localStorage.setItem("access", access);
-    else localStorage.removeItem("access");
-  }, [access]);
-
-  useEffect(() => {
-    if (refresh) localStorage.setItem("refresh", refresh);
-    else localStorage.removeItem("refresh");
-  }, [refresh]);
+  const [user, setUser] = useState(null);
+  const [tokens, setTokens] = useState(() => {
+    const stored = localStorage.getItem("tokens");
+    return stored ? JSON.parse(stored) : null;
+  });
 
   const login = async ({ username, password }) => {
-    // SimpleJWT default endpoint
-    const { data } = await api.post("/api/token/", { username, password });
-    setAccess(data.access);
-    setRefresh(data.refresh);
-    // (Optional) fetch profile if you have /me endpoint
-    // const me = await api.get("/api/me/");
-    // setUser(me.data);
+    try {
+      const res = await fetch("http://127.0.0.1:8000/api/token/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.detail || "Invalid credentials");
+      }
+
+      console.log("✅ Login successful:", data);
+
+      setTokens(data);
+      localStorage.setItem("tokens", JSON.stringify(data));
+      setUser({ username });
+
+      // Optional: redirect user after login
+      // window.location.href = "/dashboard";
+    } catch (error) {
+      console.error("❌ Login failed:", error.message);
+      alert(error.message);
+    }
   };
 
   const logout = () => {
-    setAccess(null);
-    setRefresh(null);
     setUser(null);
+    setTokens(null);
+    localStorage.removeItem("tokens");
   };
 
-  const value = useMemo(
-    () => ({ access, refresh, user, isAuthenticated, login, logout }),
-    [access, refresh, user, isAuthenticated]
+  return (
+    <AuthContext.Provider value={{ user, tokens, login, logout }}>
+      {children}
+    </AuthContext.Provider>
   );
-
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {
