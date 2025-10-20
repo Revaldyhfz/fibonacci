@@ -38,42 +38,49 @@ export default function AnalyticsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-neutral-50 flex items-center justify-center">
-        <div className="text-neutral-500">Loading analytics...</div>
+      <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
+        <div className="text-neutral-400">Loading analytics...</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-neutral-50">
-      <header className="border-b border-neutral-200 bg-white">
+    <div className="min-h-screen bg-[#0a0a0a]">
+      {/* Header */}
+      <header className="border-b border-neutral-800 bg-[#141414]">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="flex h-16 items-center justify-between">
             <div className="flex items-center gap-8">
-              <h1 className="text-xl font-semibold">Trading Journal</h1>
+              <h1 className="text-xl font-bold text-white">Trading Journal</h1>
               <nav className="hidden md:flex gap-6">
-                <Link to="/dashboard" className="text-sm text-neutral-600 hover:text-neutral-900">Dashboard</Link>
-                <Link to="/trades" className="text-sm text-neutral-600 hover:text-neutral-900">Trades</Link>
-                <Link to="/analytics" className="text-sm font-medium text-neutral-900">Analytics</Link>
+                <Link to="/dashboard" className="text-sm text-neutral-400 hover:text-white transition-colors">Dashboard</Link>
+                <Link to="/trades" className="text-sm text-neutral-400 hover:text-white transition-colors">Trades</Link>
+                <Link to="/analytics" className="text-sm font-medium text-white">Analytics</Link>
               </nav>
             </div>
-            <button onClick={() => { logout(); nav("/"); }} className="text-sm text-neutral-600 hover:text-neutral-900">Logout</button>
+            <button onClick={() => { logout(); nav("/"); }} className="text-sm text-neutral-400 hover:text-white transition-colors">
+              Logout
+            </button>
           </div>
         </div>
       </header>
 
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-2xl font-semibold">Analytics</h2>
+        {/* Header with Filters */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-8 gap-4">
+          <div>
+            <h2 className="text-3xl font-bold text-white mb-2">Advanced Analytics</h2>
+            <p className="text-neutral-400">Deep insights into your trading performance</p>
+          </div>
           <div className="flex gap-2">
             {["day", "week", "month", "all"].map((filter) => (
               <button
                 key={filter}
                 onClick={() => setTimeFilter(filter)}
-                className={`px-4 py-2 rounded-md text-sm font-medium ${
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                   timeFilter === filter
-                    ? "bg-black text-white"
-                    : "bg-white border border-neutral-300 text-neutral-700 hover:bg-neutral-50"
+                    ? "bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-lg shadow-blue-500/20"
+                    : "bg-[#141414] border border-neutral-700 text-neutral-300 hover:border-neutral-600"
                 }`}
               >
                 {filter === "all" ? "All Time" : filter.charAt(0).toUpperCase() + filter.slice(1)}
@@ -82,36 +89,45 @@ export default function AnalyticsPage() {
           </div>
         </div>
 
-        {/* Key Insights */}
-        <div className="mb-6 rounded-lg bg-gradient-to-r from-blue-500 to-purple-600 p-6 text-white">
-          <h3 className="text-lg font-semibold mb-2">Key Insight</h3>
-          <p className="text-sm opacity-90">
-            {overallStats?.most_successful_session && 
-              `Your most successful trading session is ${overallStats.most_successful_session}. Consider focusing more trades during this period.`
-            }
-          </p>
+        {/* Key Insight Banner */}
+        <div className="mb-8 rounded-2xl bg-gradient-to-r from-blue-500/20 to-purple-600/20 border border-blue-500/30 p-6">
+          <div className="flex items-start gap-4">
+            <div className="flex-shrink-0">
+              <svg className="w-8 h-8 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-white mb-2">Key Insight</h3>
+              <p className="text-neutral-300">
+                {overallStats?.most_successful_session && 
+                  `Your most successful trading session is ${overallStats.most_successful_session}. Consider focusing more trades during this period for optimal results.`
+                }
+              </p>
+            </div>
+          </div>
         </div>
 
         {/* Strategy Performance */}
         {overallStats?.strategy_performance && Object.keys(overallStats.strategy_performance).length > 0 && (
-          <div className="mb-6 rounded-lg border border-neutral-200 bg-white p-6">
-            <h3 className="text-lg font-semibold mb-4">Strategy Performance</h3>
+          <div className="mb-8 bg-[#141414] border border-neutral-800 rounded-2xl p-6">
+            <h3 className="text-xl font-bold text-white mb-6">Strategy Performance</h3>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {Object.entries(overallStats.strategy_performance).map(([name, stats]) => (
-                <div key={name} className="rounded-lg border border-neutral-200 p-4">
-                  <div className="font-medium mb-2">{name}</div>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-neutral-600">Win Rate:</span>
-                      <span className="font-medium">{stats.winrate}%</span>
+                <div key={name} className="bg-[#0a0a0a] border border-neutral-800 rounded-xl p-5 hover:border-neutral-700 transition-colors">
+                  <div className="font-bold text-lg text-white mb-4">{name}</div>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-neutral-400">Win Rate</span>
+                      <span className="text-lg font-bold text-emerald-500">{stats.winrate}%</span>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-neutral-600">Trades:</span>
-                      <span className="font-medium">{stats.count}</span>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-neutral-400">Total Trades</span>
+                      <span className="text-lg font-bold text-white">{stats.count}</span>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-neutral-600">Avg P&L:</span>
-                      <span className={`font-medium ${stats.avg_pnl >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-neutral-400">Avg P&L</span>
+                      <span className={`text-lg font-bold ${stats.avg_pnl >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
                         ${stats.avg_pnl}
                       </span>
                     </div>
@@ -124,24 +140,24 @@ export default function AnalyticsPage() {
 
         {/* Session Analysis */}
         {sessionStats && Object.keys(sessionStats).length > 0 && (
-          <div className="mb-6 rounded-lg border border-neutral-200 bg-white p-6">
-            <h3 className="text-lg font-semibold mb-4">Performance by Session</h3>
+          <div className="mb-8 bg-[#141414] border border-neutral-800 rounded-2xl p-6">
+            <h3 className="text-xl font-bold text-white mb-6">Performance by Trading Session</h3>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {Object.entries(sessionStats).map(([session, stats]) => (
-                <div key={session} className="rounded-lg border border-neutral-200 p-4">
-                  <div className="font-medium mb-2">{session}</div>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-neutral-600">Trades:</span>
-                      <span className="font-medium">{stats.count}</span>
+                <div key={session} className="bg-[#0a0a0a] border border-neutral-800 rounded-xl p-5 hover:border-neutral-700 transition-colors">
+                  <div className="font-bold text-lg text-white mb-4">{session}</div>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-neutral-400">Trades</span>
+                      <span className="text-lg font-bold text-white">{stats.count}</span>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-neutral-600">Win Rate:</span>
-                      <span className="font-medium">{stats.winrate}%</span>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-neutral-400">Win Rate</span>
+                      <span className="text-lg font-bold text-emerald-500">{stats.winrate}%</span>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-neutral-600">Total P&L:</span>
-                      <span className={`font-medium ${stats.pnl >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-neutral-400">Total P&L</span>
+                      <span className={`text-lg font-bold ${stats.pnl >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
                         ${stats.pnl.toFixed(2)}
                       </span>
                     </div>
@@ -152,35 +168,41 @@ export default function AnalyticsPage() {
           </div>
         )}
 
-        {/* Symbol Performance */}
+        {/* Symbol Performance Table */}
         {symbolStats && Object.keys(symbolStats).length > 0 && (
-          <div className="mb-6 rounded-lg border border-neutral-200 bg-white p-6">
-            <h3 className="text-lg font-semibold mb-4">Performance by Symbol</h3>
+          <div className="mb-8 bg-[#141414] border border-neutral-800 rounded-2xl overflow-hidden">
+            <div className="p-6 border-b border-neutral-800">
+              <h3 className="text-xl font-bold text-white">Performance by Symbol</h3>
+            </div>
             <div className="overflow-x-auto">
               <table className="w-full">
-                <thead className="border-b border-neutral-200">
+                <thead className="bg-[#0a0a0a]">
                   <tr>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-neutral-600">Symbol</th>
-                    <th className="px-4 py-3 text-center text-sm font-medium text-neutral-600">Trades</th>
-                    <th className="px-4 py-3 text-center text-sm font-medium text-neutral-600">Wins</th>
-                    <th className="px-4 py-3 text-center text-sm font-medium text-neutral-600">Win Rate</th>
-                    <th className="px-4 py-3 text-right text-sm font-medium text-neutral-600">Avg P&L</th>
-                    <th className="px-4 py-3 text-right text-sm font-medium text-neutral-600">Total P&L</th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-neutral-400 uppercase tracking-wider">Symbol</th>
+                    <th className="px-6 py-4 text-center text-xs font-semibold text-neutral-400 uppercase tracking-wider">Trades</th>
+                    <th className="px-6 py-4 text-center text-xs font-semibold text-neutral-400 uppercase tracking-wider">Wins</th>
+                    <th className="px-6 py-4 text-center text-xs font-semibold text-neutral-400 uppercase tracking-wider">Win Rate</th>
+                    <th className="px-6 py-4 text-right text-xs font-semibold text-neutral-400 uppercase tracking-wider">Avg P&L</th>
+                    <th className="px-6 py-4 text-right text-xs font-semibold text-neutral-400 uppercase tracking-wider">Total P&L</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-neutral-200">
+                <tbody className="divide-y divide-neutral-800">
                   {Object.entries(symbolStats)
                     .sort((a, b) => b[1].pnl - a[1].pnl)
                     .map(([symbol, stats]) => (
-                      <tr key={symbol} className="hover:bg-neutral-50">
-                        <td className="px-4 py-3 text-sm font-medium">{symbol}</td>
-                        <td className="px-4 py-3 text-sm text-center">{stats.count}</td>
-                        <td className="px-4 py-3 text-sm text-center">{stats.wins}</td>
-                        <td className="px-4 py-3 text-sm text-center">{stats.winrate}%</td>
-                        <td className={`px-4 py-3 text-sm text-right ${stats.avg_pnl >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      <tr key={symbol} className="hover:bg-[#0a0a0a] transition-colors">
+                        <td className="px-6 py-4 text-sm font-bold text-white">{symbol}</td>
+                        <td className="px-6 py-4 text-sm text-center text-neutral-300">{stats.count}</td>
+                        <td className="px-6 py-4 text-sm text-center text-neutral-300">{stats.wins}</td>
+                        <td className="px-6 py-4 text-sm text-center">
+                          <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-500">
+                            {stats.winrate}%
+                          </span>
+                        </td>
+                        <td className={`px-6 py-4 text-sm text-right font-medium ${stats.avg_pnl >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
                           ${stats.avg_pnl}
                         </td>
-                        <td className={`px-4 py-3 text-sm text-right font-medium ${stats.pnl >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        <td className={`px-6 py-4 text-sm text-right font-bold ${stats.pnl >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
                           ${stats.pnl.toFixed(2)}
                         </td>
                       </tr>
@@ -191,11 +213,13 @@ export default function AnalyticsPage() {
           </div>
         )}
 
-        {/* Most Traded Symbol */}
+        {/* Most Traded Symbol Card */}
         {overallStats?.most_traded_symbol && (
-          <div className="rounded-lg border border-neutral-200 bg-white p-6">
-            <h3 className="text-lg font-semibold mb-2">Most Traded Symbol</h3>
-            <div className="text-3xl font-bold text-blue-600">{overallStats.most_traded_symbol}</div>
+          <div className="bg-gradient-to-br from-blue-500/10 to-purple-600/10 border border-blue-500/30 rounded-2xl p-6">
+            <h3 className="text-lg font-semibold text-neutral-300 mb-2">Most Traded Symbol</h3>
+            <div className="text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-400">
+              {overallStats.most_traded_symbol}
+            </div>
           </div>
         )}
       </main>

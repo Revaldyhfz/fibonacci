@@ -43,36 +43,40 @@ export default function Dashboard() {
 
   const getSessionColor = () => {
     switch (currentSession) {
-      case "New York": return "bg-blue-500";
-      case "London": return "bg-green-500";
-      case "Tokyo": return "bg-purple-500";
-      case "Sydney": return "bg-orange-500";
-      default: return "bg-neutral-500";
+      case "New York": return "from-blue-500 to-blue-600";
+      case "London": return "from-green-500 to-green-600";
+      case "Tokyo": return "from-purple-500 to-purple-600";
+      case "Sydney": return "from-orange-500 to-orange-600";
+      default: return "from-neutral-500 to-neutral-600";
     }
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-neutral-50 flex items-center justify-center">
-        <div className="text-neutral-500">Loading...</div>
+      <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
+        <div className="text-neutral-400">Loading...</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-neutral-50">
-      <header className="border-b border-neutral-200 bg-white">
+    <div className="min-h-screen bg-[#0a0a0a]">
+      {/* Header */}
+      <header className="border-b border-neutral-800 bg-[#141414]">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="flex h-16 items-center justify-between">
             <div className="flex items-center gap-8">
-              <h1 className="text-xl font-semibold">Trading Journal</h1>
+              <h1 className="text-xl font-bold text-white">Trading Journal</h1>
               <nav className="hidden md:flex gap-6">
-                <Link to="/dashboard" className="text-sm font-medium text-neutral-900">Dashboard</Link>
-                <Link to="/trades" className="text-sm text-neutral-600 hover:text-neutral-900">Trades</Link>
-                <Link to="/analytics" className="text-sm text-neutral-600 hover:text-neutral-900">Analytics</Link>
+                <Link to="/dashboard" className="text-sm font-medium text-white">Dashboard</Link>
+                <Link to="/trades" className="text-sm text-neutral-400 hover:text-white transition-colors">Trades</Link>
+                <Link to="/analytics" className="text-sm text-neutral-400 hover:text-white transition-colors">Analytics</Link>
               </nav>
             </div>
-            <button onClick={() => { logout(); nav("/"); }} className="text-sm text-neutral-600 hover:text-neutral-900">
+            <button 
+              onClick={() => { logout(); nav("/"); }} 
+              className="text-sm text-neutral-400 hover:text-white transition-colors"
+            >
               Logout
             </button>
           </div>
@@ -80,83 +84,84 @@ export default function Dashboard() {
       </header>
 
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        <div className={`rounded-lg ${getSessionColor()} p-4 mb-6`}>
+        {/* Trading Session Banner */}
+        <div className={`rounded-2xl bg-gradient-to-r ${getSessionColor()} p-6 mb-8 shadow-xl`}>
           <div className="flex items-center justify-between text-white">
             <div>
-              <div className="text-sm opacity-90">Current Trading Session</div>
-              <div className="text-2xl font-semibold mt-1">{currentSession}</div>
+              <div className="text-sm opacity-90 font-medium">Current Trading Session</div>
+              <div className="text-3xl font-bold mt-1">{currentSession}</div>
             </div>
             <div className="text-right">
-              <div className="text-sm opacity-90">Local Time</div>
-              <div className="text-lg font-medium mt-1">
+              <div className="text-sm opacity-90 font-medium">Local Time</div>
+              <div className="text-2xl font-bold mt-1">
                 {new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}
               </div>
             </div>
           </div>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6">
-          <div className="rounded-lg border border-neutral-200 bg-white p-4">
-            <div className="text-sm text-neutral-500">Total Trades</div>
-            <div className="mt-2 text-3xl font-semibold">{stats?.total_trades || 0}</div>
+        {/* Stats Grid */}
+        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4 mb-8">
+          <div className="bg-[#141414] border border-neutral-800 rounded-xl p-6 hover:border-neutral-700 transition-colors">
+            <div className="text-sm text-neutral-400 font-medium mb-2">Total Trades</div>
+            <div className="text-4xl font-bold text-white">{stats?.total_trades || 0}</div>
           </div>
-          <div className="rounded-lg border border-neutral-200 bg-white p-4">
-            <div className="text-sm text-neutral-500">Win Rate</div>
-            <div className="mt-2 text-3xl font-semibold">{stats?.winrate_percent || 0}%</div>
+          <div className="bg-[#141414] border border-neutral-800 rounded-xl p-6 hover:border-neutral-700 transition-colors">
+            <div className="text-sm text-neutral-400 font-medium mb-2">Win Rate</div>
+            <div className="text-4xl font-bold text-emerald-500">{stats?.winrate_percent || 0}%</div>
           </div>
-          <div className="rounded-lg border border-neutral-200 bg-white p-4">
-            <div className="text-sm text-neutral-500">Total P&L</div>
-            <div className={`mt-2 text-3xl font-semibold ${stats?.total_pnl >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+          <div className="bg-[#141414] border border-neutral-800 rounded-xl p-6 hover:border-neutral-700 transition-colors">
+            <div className="text-sm text-neutral-400 font-medium mb-2">Total P&L</div>
+            <div className={`text-4xl font-bold ${stats?.total_pnl >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
               ${stats?.total_pnl?.toFixed(2) || '0.00'}
             </div>
           </div>
-          <div className="rounded-lg border border-neutral-200 bg-white p-4">
-            <div className="text-sm text-neutral-500">Winning Trades</div>
-            <div className="mt-2 text-3xl font-semibold text-green-600">{stats?.wins || 0}</div>
+          <div className="bg-[#141414] border border-neutral-800 rounded-xl p-6 hover:border-neutral-700 transition-colors">
+            <div className="text-sm text-neutral-400 font-medium mb-2">Winning Trades</div>
+            <div className="text-4xl font-bold text-emerald-500">{stats?.wins || 0}</div>
           </div>
         </div>
 
+        {/* Performance Cards */}
         <div className="grid gap-6 lg:grid-cols-2">
-          <div className="rounded-lg border border-neutral-200 bg-white p-6">
-            <h2 className="text-lg font-semibold mb-4">Average Performance</h2>
+          <div className="bg-[#141414] border border-neutral-800 rounded-xl p-6">
+            <h2 className="text-lg font-bold text-white mb-6">Average Performance</h2>
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-neutral-600">Avg Win</span>
-                <span className="text-lg font-semibold text-green-600">+${Math.abs(stats?.avg_win || 0).toFixed(2)}</span>
+              <div className="flex items-center justify-between py-3 border-b border-neutral-800">
+                <span className="text-sm text-neutral-400 font-medium">Avg Win</span>
+                <span className="text-xl font-bold text-emerald-500">+${Math.abs(stats?.avg_win || 0).toFixed(2)}</span>
               </div>
-              <div className="h-px bg-neutral-200" />
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-neutral-600">Avg Loss</span>
-                <span className="text-lg font-semibold text-red-600">${(stats?.avg_loss || 0).toFixed(2)}</span>
+              <div className="flex items-center justify-between py-3 border-b border-neutral-800">
+                <span className="text-sm text-neutral-400 font-medium">Avg Loss</span>
+                <span className="text-xl font-bold text-red-500">${(stats?.avg_loss || 0).toFixed(2)}</span>
               </div>
-              <div className="h-px bg-neutral-200" />
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-neutral-600">Win/Loss Ratio</span>
-                <span className="text-lg font-semibold">
+              <div className="flex items-center justify-between py-3">
+                <span className="text-sm text-neutral-400 font-medium">Win/Loss Ratio</span>
+                <span className="text-xl font-bold text-white">
                   {stats?.avg_loss ? Math.abs((stats.avg_win / stats.avg_loss)).toFixed(2) : '0.00'}
                 </span>
               </div>
             </div>
           </div>
 
-          <div className="rounded-lg border border-neutral-200 bg-white p-6">
-            <h2 className="text-lg font-semibold mb-4">Best & Worst</h2>
+          <div className="bg-[#141414] border border-neutral-800 rounded-xl p-6">
+            <h2 className="text-lg font-bold text-white mb-6">Best & Worst</h2>
             <div className="space-y-4">
               <div>
-                <div className="text-sm text-neutral-600 mb-2">Best Trade</div>
+                <div className="text-sm text-neutral-400 font-medium mb-3">Best Trade</div>
                 {stats?.best_trade && (
-                  <div className="flex items-center justify-between bg-green-50 p-3 rounded">
-                    <span className="text-sm font-medium">{stats.best_trade.symbol}</span>
-                    <span className="text-lg font-semibold text-green-600">+${stats.best_trade.pnl.toFixed(2)}</span>
+                  <div className="flex items-center justify-between bg-emerald-500/10 border border-emerald-500/20 p-4 rounded-lg">
+                    <span className="text-sm font-bold text-white">{stats.best_trade.symbol}</span>
+                    <span className="text-xl font-bold text-emerald-500">+${stats.best_trade.pnl.toFixed(2)}</span>
                   </div>
                 )}
               </div>
               <div>
-                <div className="text-sm text-neutral-600 mb-2">Worst Trade</div>
+                <div className="text-sm text-neutral-400 font-medium mb-3">Worst Trade</div>
                 {stats?.worst_trade && (
-                  <div className="flex items-center justify-between bg-red-50 p-3 rounded">
-                    <span className="text-sm font-medium">{stats.worst_trade.symbol}</span>
-                    <span className="text-lg font-semibold text-red-600">${stats.worst_trade.pnl.toFixed(2)}</span>
+                  <div className="flex items-center justify-between bg-red-500/10 border border-red-500/20 p-4 rounded-lg">
+                    <span className="text-sm font-bold text-white">{stats.worst_trade.symbol}</span>
+                    <span className="text-xl font-bold text-red-500">${stats.worst_trade.pnl.toFixed(2)}</span>
                   </div>
                 )}
               </div>
@@ -164,11 +169,18 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="mt-6 flex gap-3">
-          <Link to="/trades" className="inline-flex items-center justify-center rounded-md bg-black px-6 py-3 text-sm font-medium text-white hover:bg-neutral-800">
-            Add New Trade
+        {/* Action Buttons */}
+        <div className="mt-8 flex gap-4">
+          <Link 
+            to="/trades" 
+            className="inline-flex items-center justify-center px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-medium rounded-lg shadow-lg shadow-blue-500/20 transition-all"
+          >
+            View Trades Calendar
           </Link>
-          <Link to="/analytics" className="inline-flex items-center justify-center rounded-md border border-neutral-300 bg-white px-6 py-3 text-sm font-medium hover:bg-neutral-50">
+          <Link 
+            to="/analytics" 
+            className="inline-flex items-center justify-center px-6 py-3 bg-[#141414] border border-neutral-700 hover:border-neutral-600 text-white font-medium rounded-lg transition-colors"
+          >
             View Analytics
           </Link>
         </div>

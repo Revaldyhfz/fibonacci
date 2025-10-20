@@ -1,8 +1,7 @@
 import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
-// Minimal styling via Tailwind (works even without it; just looks plain)
 export default function LoginPage() {
   const nav = useNavigate();
   const { login } = useAuth();
@@ -21,7 +20,6 @@ export default function LoginPage() {
       await login(form);
       nav("/dashboard");
     } catch (err) {
-      // err is now the Error object thrown from login()
       const msg = err.message || "Login failed. Check your username/password.";
       setError(msg);
     } finally {
@@ -30,66 +28,70 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen grid place-items-center bg-neutral-50">
-      <div className="w-full max-w-sm rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm">
-        <div className="mb-6">
-          <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">
-            Sign in
-          </h1>
-          <p className="mt-1 text-sm text-neutral-500">
-            Use your account to access your trades & analytics.
-          </p>
+    <div className="min-h-screen flex items-center justify-center bg-[#0a0a0a] px-4">
+      <div className="w-full max-w-md">
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl mb-4">
+            <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+            </svg>
+          </div>
+          <h1 className="text-3xl font-bold text-white mb-2">Trading Journal</h1>
+          <p className="text-neutral-400">Sign in to track your trades</p>
         </div>
 
-        <form onSubmit={onSubmit} className="grid gap-3">
-          <div className="grid gap-1.5">
-            <label className="text-sm text-neutral-700">Username</label>
-            <input
-              name="username"
-              autoComplete="username"
-              value={form.username}
-              onChange={onChange}
-              required
-              className="h-10 rounded-md border border-neutral-300 px-3 outline-none focus:border-neutral-500"
-              placeholder="johndoe"
-            />
-          </div>
-
-          <div className="grid gap-1.5">
-            <label className="text-sm text-neutral-700">Password</label>
-            <input
-              name="password"
-              type="password"
-              autoComplete="current-password"
-              value={form.password}
-              onChange={onChange}
-              required
-              className="h-10 rounded-md border border-neutral-300 px-3 outline-none focus:border-neutral-500"
-              placeholder="••••••••"
-            />
-          </div>
-
-          {error && (
-            <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">
-              {error}
+        <div className="bg-[#141414] border border-neutral-800 rounded-2xl p-8 shadow-2xl">
+          <form onSubmit={onSubmit} className="space-y-6">
+            <div>
+              <label className="block text-sm font-medium text-neutral-300 mb-2">
+                Username
+              </label>
+              <input
+                name="username"
+                autoComplete="username"
+                value={form.username}
+                onChange={onChange}
+                required
+                className="w-full px-4 py-3 bg-[#0a0a0a] border border-neutral-700 rounded-lg text-white placeholder-neutral-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
+                placeholder="Enter your username"
+              />
             </div>
-          )}
 
-          <button
-            disabled={loading}
-            className="mt-2 h-10 rounded-md bg-black text-white transition-opacity hover:opacity-90 disabled:opacity-50"
-          >
-            {loading ? "Signing in…" : "Sign in"}
-          </button>
-        </form>
+            <div>
+              <label className="block text-sm font-medium text-neutral-300 mb-2">
+                Password
+              </label>
+              <input
+                name="password"
+                type="password"
+                autoComplete="current-password"
+                value={form.password}
+                onChange={onChange}
+                required
+                className="w-full px-4 py-3 bg-[#0a0a0a] border border-neutral-700 rounded-lg text-white placeholder-neutral-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
+                placeholder="Enter your password"
+              />
+            </div>
 
-        <div className="mt-4 text-center text-sm text-neutral-600">
-          Don’t have an account?
-          {/* You decided to create users manually for now. When ready, link to /register */}{" "}
-          <Link to="#" className="pointer-events-none text-neutral-400">
-            Register (coming soon)
-          </Link>
+            {error && (
+              <div className="bg-red-500/10 border border-red-500/50 rounded-lg p-4">
+                <p className="text-sm text-red-400">{error}</p>
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-3 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-medium rounded-lg shadow-lg shadow-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+            >
+              {loading ? "Signing in..." : "Sign in"}
+            </button>
+          </form>
         </div>
+
+        <p className="text-center text-sm text-neutral-500 mt-6">
+          Professional trading journal for serious traders
+        </p>
       </div>
     </div>
   );
