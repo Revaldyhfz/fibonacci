@@ -21,9 +21,8 @@ export default function LoginPage() {
       await login(form);
       nav("/dashboard");
     } catch (err) {
-      const msg =
-        err.response?.data?.detail ||
-        "Login failed. Check your username/password.";
+      // err is now the Error object thrown from login()
+      const msg = err.message || "Login failed. Check your username/password.";
       setError(msg);
     } finally {
       setLoading(false);
@@ -86,8 +85,7 @@ export default function LoginPage() {
 
         <div className="mt-4 text-center text-sm text-neutral-600">
           Don’t have an account?
-          {/* You decided to create users manually for now. When ready, link to /register */}
-          {" "}
+          {/* You decided to create users manually for now. When ready, link to /register */}{" "}
           <Link to="#" className="pointer-events-none text-neutral-400">
             Register (coming soon)
           </Link>

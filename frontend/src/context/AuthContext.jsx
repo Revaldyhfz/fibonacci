@@ -9,9 +9,13 @@ export function AuthProvider({ children }) {
     return stored ? JSON.parse(stored) : null;
   });
 
+  // Add isAuthenticated derived from tokens
+  const isAuthenticated = !!tokens?.access;
+
   const login = async ({ username, password }) => {
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/token/", {
+      // FIX: Correct endpoint
+      const res = await fetch("http://127.0.0.1:8000/api/auth/login/", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username, password }),
@@ -28,12 +32,12 @@ export function AuthProvider({ children }) {
       setTokens(data);
       localStorage.setItem("tokens", JSON.stringify(data));
       setUser({ username });
-
-      // Optional: redirect user after login
-      // window.location.href = "/dashboard";
+      
+      // Don't show alert on success, let the component handle navigation
     } catch (error) {
       console.error("❌ Login failed:", error.message);
-      alert(error.message);
+      // Re-throw so LoginPage can catch it
+      throw error;
     }
   };
 
@@ -44,7 +48,7 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, tokens, login, logout }}>
+    <AuthContext.Provider value={{ user, tokens, isAuthenticated, login, logout }}>
       {children}
     </AuthContext.Provider>
   );

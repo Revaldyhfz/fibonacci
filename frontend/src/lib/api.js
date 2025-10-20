@@ -9,7 +9,12 @@ export const api = axios.create({
 
 // Attach access token from storage on every request
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem("access");
-  if (token) config.headers.Authorization = `Bearer ${token}`;
+  const tokens = localStorage.getItem("tokens");
+  if (tokens) {
+    const parsed = JSON.parse(tokens);
+    if (parsed.access) {
+      config.headers.Authorization = `Bearer ${parsed.access}`;
+    }
+  }
   return config;
 });
