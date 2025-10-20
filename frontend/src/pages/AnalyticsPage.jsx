@@ -10,27 +10,58 @@ export default function AnalyticsPage() {
   const [sessionStats, setSessionStats] = useState(null);
   const [symbolStats, setSymbolStats] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     fetchAnalytics();
   }, [timeFilter]);
 
   const fetchAnalytics = async () => {
+    setLoading(true);
+    setError(null);
+    
     try {
       const tokens = JSON.parse(localStorage.getItem("tokens"));
+      if (!tokens || !tokens.access) {
+        throw new Error("No authentication token found");
+      }
+
       const headers = { Authorization: `Bearer ${tokens.access}` };
       
-      const [overall, sessions, symbols] = await Promise.all([
-        fetch("http://127.0.0.1:8000/analytics/stats/overall", { headers }).then(r => r.json()),
-        fetch("http://127.0.0.1:8000/analytics/stats/session", { headers }).then(r => r.json()),
-        fetch("http://127.0.0.1:8000/analytics/stats/symbol", { headers }).then(r => r.json())
+      console.log("Fetching analytics data...");
+      
+      // Fetch all endpoints
+      const [overallRes, sessionsRes, symbolsRes] = await Promise.all([
+        fetch("http://127.0.0.1:8000/analytics/stats/overall", { headers }),
+        fetch("http://127.0.0.1:8000/analytics/stats/session", { headers }),
+        fetch("http://127.0.0.1:8000/analytics/stats/symbol", { headers })
       ]);
+
+      console.log("Response statuses:", {
+        overall: overallRes.status,
+        sessions: sessionsRes.status,
+        symbols: symbolsRes.status
+      });
+
+      // Check if all responses are ok
+      if (!overallRes.ok || !sessionsRes.ok || !symbolsRes.ok) {
+        throw new Error(`Failed to fetch analytics: Overall(${overallRes.status}), Sessions(${sessionsRes.status}), Symbols(${symbolsRes.status})`);
+      }
+
+      const [overall, sessions, symbols] = await Promise.all([
+        overallRes.json(),
+        sessionsRes.json(),
+        symbolsRes.json()
+      ]);
+
+      console.log("Analytics data received:", { overall, sessions, symbols });
 
       setOverallStats(overall);
       setSessionStats(sessions);
       setSymbolStats(symbols);
     } catch (error) {
       console.error("Failed to fetch analytics:", error);
+      setError(error.message);
     } finally {
       setLoading(false);
     }
@@ -39,7 +70,86 @@ export default function AnalyticsPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
-        <div className="text-neutral-400">Loading analytics...</div>
+        <div className="text-center">
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-neutral-600 border-t-blue-500 mb-4"></div>
+          <div className="text-neutral-400">Loading analytics...</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
+        <div className="bg-[#141414] border border-red-500/30 rounded-xl p-8 max-w-md">
+          <div className="text-red-500 text-xl font-bold mb-4">⚠️ Analytics Error</div>
+          <p className="text-neutral-300 mb-4">{error}</p>
+          <div className="space-y-2 text-sm text-neutral-400 mb-6">
+            <p>Troubleshooting steps:</p>
+            <ol className="list-decimal list-inside space-y-1 ml-2">
+              <li>Make sure the analytics service is running on port 8001</li>
+              <li>Check if you have trades in your database</li>
+              <li>Verify your authentication token is valid</li>
+            </ol>
+          </div>
+          <div className="flex gap-3">
+            <button
+              onClick={fetchAnalytics}
+              className="flex-1 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors"
+            >
+              Retry
+            </button>
+            <button
+              onClick={() => nav("/dashboard")}
+              className="flex-1 px-4 py-2 bg-neutral-700 hover:bg-neutral-600 text-white rounded-lg transition-colors"
+            >
+              Go to Dashboard
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Check if we have no data
+  const hasNoData = !overallStats?.total_trades || overallStats.total_trades === 0;
+
+  if (hasNoData) {
+    return (
+      <div className="min-h-screen bg-[#0a0a0a]">
+        <header className="border-b border-neutral-800 bg-[#141414]">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div className="flex h-16 items-center justify-between">
+              <div className="flex items-center gap-8">
+                <h1 className="text-xl font-bold text-white">Trading Journal</h1>
+                <nav className="hidden md:flex gap-6">
+                  <Link to="/dashboard" className="text-sm text-neutral-400 hover:text-white transition-colors">Dashboard</Link>
+                  <Link to="/trades" className="text-sm text-neutral-400 hover:text-white transition-colors">Trades</Link>
+                  <Link to="/analytics" className="text-sm font-medium text-white">Analytics</Link>
+                </nav>
+              </div>
+              <button onClick={() => { logout(); nav("/"); }} className="text-sm text-neutral-400 hover:text-white transition-colors">
+                Logout
+              </button>
+            </div>
+          </div>
+        </header>
+        
+        <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+          <div className="flex flex-col items-center justify-center min-h-[60vh]">
+            <div className="text-6xl mb-4">📊</div>
+            <h2 className="text-2xl font-bold text-white mb-2">No Trading Data Yet</h2>
+            <p className="text-neutral-400 mb-6 text-center max-w-md">
+              Start adding trades to see detailed analytics and insights about your trading performance.
+            </p>
+            <Link
+              to="/trades"
+              className="px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-medium rounded-lg shadow-lg shadow-blue-500/20 transition-all"
+            >
+              Add Your First Trade
+            </Link>
+          </div>
+        </main>
       </div>
     );
   }
@@ -72,7 +182,7 @@ export default function AnalyticsPage() {
             <h2 className="text-3xl font-bold text-white mb-2">Advanced Analytics</h2>
             <p className="text-neutral-400">Deep insights into your trading performance</p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             {["day", "week", "month", "all"].map((filter) => (
               <button
                 key={filter}
@@ -90,23 +200,23 @@ export default function AnalyticsPage() {
         </div>
 
         {/* Key Insight Banner */}
-        <div className="mb-8 rounded-2xl bg-gradient-to-r from-blue-500/20 to-purple-600/20 border border-blue-500/30 p-6">
-          <div className="flex items-start gap-4">
-            <div className="flex-shrink-0">
-              <svg className="w-8 h-8 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
-            </div>
-            <div>
-              <h3 className="text-lg font-bold text-white mb-2">Key Insight</h3>
-              <p className="text-neutral-300">
-                {overallStats?.most_successful_session && 
-                  `Your most successful trading session is ${overallStats.most_successful_session}. Consider focusing more trades during this period for optimal results.`
-                }
-              </p>
+        {overallStats?.most_successful_session && (
+          <div className="mb-8 rounded-2xl bg-gradient-to-r from-blue-500/20 to-purple-600/20 border border-blue-500/30 p-6">
+            <div className="flex items-start gap-4">
+              <div className="flex-shrink-0">
+                <svg className="w-8 h-8 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-white mb-2">Key Insight</h3>
+                <p className="text-neutral-300">
+                  Your most successful trading session is {overallStats.most_successful_session}. Consider focusing more trades during this period for optimal results.
+                </p>
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Strategy Performance */}
         {overallStats?.strategy_performance && Object.keys(overallStats.strategy_performance).length > 0 && (

@@ -7,12 +7,12 @@ export default function Dashboard() {
   const nav = useNavigate();
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [currentSession, setCurrentSession] = useState("Unknown");
+  const [sessions, setSessions] = useState([]);
 
   useEffect(() => {
     fetchStats();
-    updateCurrentSession();
-    const interval = setInterval(updateCurrentSession, 60000);
+    updateSessions();
+    const interval = setInterval(updateSessions, 60000); // Update every minute
     return () => clearInterval(interval);
   }, []);
 
@@ -31,24 +31,38 @@ export default function Dashboard() {
     }
   };
 
-  const updateCurrentSession = () => {
+  const updateSessions = () => {
     const now = new Date();
     const utcHour = now.getUTCHours();
+    const utcMinute = now.getUTCMinutes();
     
-    if (utcHour >= 13 && utcHour < 22) setCurrentSession("New York");
-    else if (utcHour >= 8 && utcHour < 17) setCurrentSession("London");
-    else if (utcHour >= 0 && utcHour < 9) setCurrentSession("Tokyo");
-    else setCurrentSession("Sydney");
-  };
+    // Session times in UTC
+    const sessionData = [
+      { name: "Sydney", start: 22, end: 7, color: "from-orange-500 to-orange-600", active: false },
+      { name: "Tokyo", start: 0, end: 9, color: "from-purple-500 to-purple-600", active: false },
+      { name: "London", start: 8, end: 17, color: "from-green-500 to-green-600", active: false },
+      { name: "New York", start: 13, end: 22, color: "from-blue-500 to-blue-600", active: false },
+    ];
 
-  const getSessionColor = () => {
-    switch (currentSession) {
-      case "New York": return "from-blue-500 to-blue-600";
-      case "London": return "from-green-500 to-green-600";
-      case "Tokyo": return "from-purple-500 to-purple-600";
-      case "Sydney": return "from-orange-500 to-orange-600";
-      default: return "from-neutral-500 to-neutral-600";
-    }
+    // Check which sessions are active
+    sessionData.forEach(session => {
+      if (session.start < session.end) {
+        session.active = utcHour >= session.start && utcHour < session.end;
+      } else {
+        // Session crosses midnight
+        session.active = utcHour >= session.start || utcHour < session.end;
+      }
+    });
+
+    // Check for London/New York overlap (13:00-17:00 UTC)
+    const isLondonNYOverlap = utcHour >= 13 && utcHour < 17;
+
+    setSessions({
+      active: sessionData.filter(s => s.active),
+      all: sessionData,
+      isLondonNYOverlap,
+      currentTime: now
+    });
   };
 
   if (loading) {
@@ -84,18 +98,85 @@ export default function Dashboard() {
       </header>
 
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        {/* Trading Session Banner */}
-        <div className={`rounded-2xl bg-gradient-to-r ${getSessionColor()} p-6 mb-8 shadow-xl`}>
-          <div className="flex items-center justify-between text-white">
-            <div>
-              <div className="text-sm opacity-90 font-medium">Current Trading Session</div>
-              <div className="text-3xl font-bold mt-1">{currentSession}</div>
-            </div>
-            <div className="text-right">
-              <div className="text-sm opacity-90 font-medium">Local Time</div>
-              <div className="text-2xl font-bold mt-1">
-                {new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}
+        {/* Trading Sessions Banner */}
+        <div className="mb-8 space-y-4">
+          {/* London/NY Overlap - Special Treatment */}
+          {sessions.isLondonNYOverlap && (
+            <div className="relative overflow-hidden rounded-2xl p-6 shadow-xl">
+              <div className="absolute inset-0 bg-gradient-to-r from-green-500 via-cyan-500 to-blue-600 opacity-90"></div>
+              <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSI2MCIgaGVpZ2h0PSI2MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTSAxMCAwIEwgMCAwIDAgMTAiIGZpbGw9Im5vbmUiIHN0cm9rZT0id2hpdGUiIHN0cm9rZS1vcGFjaXR5PSIwLjEiIHN0cm9rZS13aWR0aD0iMSIvPjwvcGF0dGVybj48L2RlZnM+PHJlY3Qgd2lkdGg9IjEwMCUiIGhlaWdodD0iMTAwJSIgZmlsbD0idXJsKCNncmlkKSIvPjwvc3ZnPg==')] opacity-20"></div>
+              <div className="relative flex items-center justify-between text-white">
+                <div>
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="flex items-center gap-2 px-3 py-1 bg-white/20 backdrop-blur-sm rounded-full">
+                      <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+                      <span className="text-xs font-bold uppercase tracking-wider">Prime Time</span>
+                    </div>
+                  </div>
+                  <div className="text-3xl font-bold mb-1">London × New York Overlap</div>
+                  <div className="text-sm opacity-90 font-medium">Highest liquidity & volatility period</div>
+                </div>
+                <div className="text-right">
+                  <div className="text-sm opacity-90 font-medium">Local Time</div>
+                  <div className="text-2xl font-bold mt-1">
+                    {sessions.currentTime?.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                  </div>
+                </div>
               </div>
+            </div>
+          )}
+
+          {/* Active Sessions */}
+          {!sessions.isLondonNYOverlap && sessions.active.length > 0 && (
+            <div className="grid gap-4 sm:grid-cols-2">
+              {sessions.active.map(session => (
+                <div key={session.name} className={`rounded-2xl bg-gradient-to-r ${session.color} p-6 shadow-xl`}>
+                  <div className="flex items-center justify-between text-white">
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+                        <div className="text-sm opacity-90 font-medium">Active Now</div>
+                      </div>
+                      <div className="text-3xl font-bold">{session.name} Session</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-sm opacity-90 font-medium">Local Time</div>
+                      <div className="text-2xl font-bold mt-1">
+                        {sessions.currentTime?.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* All Sessions Overview */}
+          <div className="bg-[#141414] border border-neutral-800 rounded-xl p-4">
+            <h3 className="text-sm font-semibold text-neutral-400 mb-3 uppercase tracking-wider">All Sessions (UTC)</h3>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {sessions.all?.map(session => (
+                <div 
+                  key={session.name}
+                  className={`rounded-lg border-2 p-3 transition-all ${
+                    session.active 
+                      ? 'border-white bg-white/5' 
+                      : 'border-neutral-700 bg-neutral-800/30'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <span className={`text-sm font-bold ${session.active ? 'text-white' : 'text-neutral-400'}`}>
+                      {session.name}
+                    </span>
+                    {session.active && (
+                      <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
+                    )}
+                  </div>
+                  <div className={`text-xs ${session.active ? 'text-neutral-300' : 'text-neutral-500'}`}>
+                    {String(session.start).padStart(2, '0')}:00 - {String(session.end).padStart(2, '0')}:00
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </div>
@@ -129,16 +210,22 @@ export default function Dashboard() {
             <div className="space-y-4">
               <div className="flex items-center justify-between py-3 border-b border-neutral-800">
                 <span className="text-sm text-neutral-400 font-medium">Avg Win</span>
-                <span className="text-xl font-bold text-emerald-500">+${Math.abs(stats?.avg_win || 0).toFixed(2)}</span>
+                <span className="text-xl font-bold text-emerald-500">
+                  +${Math.abs(stats?.avg_win || 0).toFixed(2)}
+                </span>
               </div>
               <div className="flex items-center justify-between py-3 border-b border-neutral-800">
                 <span className="text-sm text-neutral-400 font-medium">Avg Loss</span>
-                <span className="text-xl font-bold text-red-500">${(stats?.avg_loss || 0).toFixed(2)}</span>
+                <span className="text-xl font-bold text-red-500">
+                  ${(stats?.avg_loss || 0).toFixed(2)}
+                </span>
               </div>
               <div className="flex items-center justify-between py-3">
                 <span className="text-sm text-neutral-400 font-medium">Win/Loss Ratio</span>
                 <span className="text-xl font-bold text-white">
-                  {stats?.avg_loss ? Math.abs((stats.avg_win / stats.avg_loss)).toFixed(2) : '0.00'}
+                  {stats?.avg_loss && stats?.avg_loss !== 0
+                    ? Math.abs((stats.avg_win / stats.avg_loss)).toFixed(2)
+                    : '0.00'}
                 </span>
               </div>
             </div>
@@ -149,20 +236,28 @@ export default function Dashboard() {
             <div className="space-y-4">
               <div>
                 <div className="text-sm text-neutral-400 font-medium mb-3">Best Trade</div>
-                {stats?.best_trade && (
+                {stats?.best_trade ? (
                   <div className="flex items-center justify-between bg-emerald-500/10 border border-emerald-500/20 p-4 rounded-lg">
                     <span className="text-sm font-bold text-white">{stats.best_trade.symbol}</span>
-                    <span className="text-xl font-bold text-emerald-500">+${stats.best_trade.pnl.toFixed(2)}</span>
+                    <span className="text-xl font-bold text-emerald-500">
+                      +${stats.best_trade.pnl.toFixed(2)}
+                    </span>
                   </div>
+                ) : (
+                  <div className="text-sm text-neutral-500 p-4 border border-neutral-800 rounded-lg">No trades yet</div>
                 )}
               </div>
               <div>
                 <div className="text-sm text-neutral-400 font-medium mb-3">Worst Trade</div>
-                {stats?.worst_trade && (
+                {stats?.worst_trade ? (
                   <div className="flex items-center justify-between bg-red-500/10 border border-red-500/20 p-4 rounded-lg">
                     <span className="text-sm font-bold text-white">{stats.worst_trade.symbol}</span>
-                    <span className="text-xl font-bold text-red-500">${stats.worst_trade.pnl.toFixed(2)}</span>
+                    <span className="text-xl font-bold text-red-500">
+                      ${stats.worst_trade.pnl.toFixed(2)}
+                    </span>
                   </div>
+                ) : (
+                  <div className="text-sm text-neutral-500 p-4 border border-neutral-800 rounded-lg">No trades yet</div>
                 )}
               </div>
             </div>
