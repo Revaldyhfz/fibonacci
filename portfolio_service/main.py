@@ -1,10 +1,12 @@
-# portfolio_service/main.py
+# portfolio_service/main.py - FIXED VERSION
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime, timedelta
 import httpx
+import asyncio
+from collections import defaultdict
 
 app = FastAPI(title="Crypto Portfolio Service")
 
@@ -16,9 +18,48 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Price cache (5 minute TTL)
+# Enhanced caching system
 price_cache = {}
-CACHE_DURATION = 300  # 5 minutes
+history_cache = {}
+PRICE_CACHE_DURATION = 300  # 5 minutes
+HISTORY_CACHE_DURATION = 3600  # 1 hour
+
+# Rate limiting - CRITICAL for CoinGecko free tier
+API_RATE_LIMIT = 0.5  # Wait 0.5 seconds between API calls (120 calls/min max)
+last_api_call = datetime.now()
+
+async def rate_limited_request(client: httpx.AsyncClient, url: str, params: dict):
+    """Make rate-limited API request to avoid 429 errors"""
+    global last_api_call
+    
+    # Wait if needed to respect rate limit
+    time_since_last = (datetime.now() - last_api_call).total_seconds()
+    if time_since_last < API_RATE_LIMIT:
+        await asyncio.sleep(API_RATE_LIMIT - time_since_last)
+    
+    # Make request with retry logic
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            last_api_call = datetime.now()
+            response = await client.get(url, params=params, timeout=15)
+            
+            if response.status_code == 429:
+                # Rate limited - wait and retry
+                wait_time = (attempt + 1) * 2  # Exponential backoff: 2s, 4s, 6s
+                print(f"⚠️ Rate limited. Waiting {wait_time}s before retry {attempt + 1}/{max_retries}")
+                await asyncio.sleep(wait_time)
+                continue
+            
+            response.raise_for_status()
+            return response
+            
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 429 and attempt < max_retries - 1:
+                continue
+            raise
+    
+    raise HTTPException(status_code=429, detail="CoinGecko API rate limit exceeded. Please wait a moment.")
 
 class Asset(BaseModel):
     symbol: str
@@ -38,28 +79,28 @@ class PortfolioSummary(BaseModel):
 @app.get("/")
 def root():
     return {
-        "message": "Crypto Portfolio Service",
-        "endpoints": {
-            "search": "/search/{query} - Search for any cryptocurrency",
-            "price": "/price/{coin_id} - Get live price for any coin",
-            "portfolio": "/portfolio/calculate - Calculate portfolio value",
-            "history": "/portfolio/history - Get portfolio value history"
+        "message": "Crypto Portfolio Service (Rate Limited)",
+        "rate_limit": "10-30 calls/minute (CoinGecko free tier)",
+        "cache_duration": {
+            "prices": f"{PRICE_CACHE_DURATION}s",
+            "history": f"{HISTORY_CACHE_DURATION}s"
         }
     }
 
 @app.get("/price/{coin_id}")
 async def get_crypto_price(coin_id: str):
-    """Get current price for ANY cryptocurrency using CoinGecko API"""
+    """Get current price with caching to avoid rate limits"""
     coin_id = coin_id.lower()
     
     # Check cache first
     cache_key = f"price_{coin_id}"
     if cache_key in price_cache:
         cached_data = price_cache[cache_key]
-        if (datetime.now() - cached_data['timestamp']).seconds < CACHE_DURATION:
+        if (datetime.now() - cached_data['timestamp']).seconds < PRICE_CACHE_DURATION:
+            print(f"✓ Using cached price for {coin_id}")
             return cached_data['data']
     
-    # Fetch from CoinGecko
+    # Fetch from CoinGecko with rate limiting
     async with httpx.AsyncClient() as client:
         try:
             url = "https://api.coingecko.com/api/v3/simple/price"
@@ -70,15 +111,13 @@ async def get_crypto_price(coin_id: str):
                 'include_24hr_vol': 'true',
                 'include_market_cap': 'true'
             }
-            response = await client.get(url, params=params, timeout=10)
-            response.raise_for_status()
+            
+            print(f"🌐 Fetching price for {coin_id}...")
+            response = await rate_limited_request(client, url, params)
             data = response.json()
             
             if coin_id not in data:
-                raise HTTPException(
-                    status_code=404, 
-                    detail=f"Coin '{coin_id}' not found. Use /search endpoint to find the correct coin_id"
-                )
+                raise HTTPException(404, f"Coin '{coin_id}' not found")
             
             result = {
                 'coin_id': coin_id,
@@ -97,15 +136,14 @@ async def get_crypto_price(coin_id: str):
             
             return result
             
-        except httpx.HTTPError as e:
-            raise HTTPException(
-                status_code=503, 
-                detail=f"CoinGecko API error: {str(e)}"
-            )
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(503, f"CoinGecko API error: {str(e)}")
 
 @app.post("/portfolio/calculate")
 async def calculate_portfolio(assets: List[Asset]):
-    """Calculate portfolio value for ANY cryptocurrency"""
+    """Calculate portfolio with rate limiting"""
     if not assets:
         return PortfolioSummary(
             total_value_usd=0,
@@ -119,8 +157,11 @@ async def calculate_portfolio(assets: List[Asset]):
     total_cost = 0.0
     enriched_assets = []
     
-    for asset in assets:
+    print(f"📊 Calculating portfolio for {len(assets)} assets...")
+    
+    for i, asset in enumerate(assets):
         try:
+            print(f"  [{i+1}/{len(assets)}] Processing {asset.symbol}...")
             price_data = await get_crypto_price(asset.coin_id)
             current_price = price_data['price_usd']
             current_value = asset.amount * current_price
@@ -154,6 +195,7 @@ async def calculate_portfolio(assets: List[Asset]):
             })
             
         except HTTPException as e:
+            print(f"  ❌ Error for {asset.symbol}: {e.detail}")
             enriched_assets.append({
                 'symbol': asset.symbol.upper(),
                 'coin_id': asset.coin_id,
@@ -162,18 +204,11 @@ async def calculate_portfolio(assets: List[Asset]):
                 'current_price': None,
                 'current_value': None
             })
-        except Exception as e:
-            enriched_assets.append({
-                'symbol': asset.symbol.upper(),
-                'coin_id': asset.coin_id,
-                'amount': asset.amount,
-                'error': f"Unexpected error: {str(e)}",
-                'current_price': None,
-                'current_value': None
-            })
     
     total_pnl = total_value - total_cost if total_cost > 0 else 0
     total_pnl_percent = (total_pnl / total_cost * 100) if total_cost > 0 else 0
+    
+    print(f"✓ Portfolio calculated: ${total_value:.2f}")
     
     return PortfolioSummary(
         total_value_usd=round(total_value, 2),
@@ -185,20 +220,30 @@ async def calculate_portfolio(assets: List[Asset]):
 
 @app.post("/portfolio/history")
 async def get_portfolio_history(assets: List[Asset], days: int = 7):
-    """
-    Get historical portfolio value over the last N days
-    Returns data points for charting
-    """
+    """Get historical data with aggressive caching to avoid rate limits"""
     if not assets:
         return {'history': []}
     
-    # Get historical data for each asset
+    # Create cache key based on assets
+    asset_ids = sorted([a.coin_id for a in assets])
+    cache_key = f"history_{'-'.join(asset_ids)}_{days}"
+    
+    # Check cache (1 hour TTL for history)
+    if cache_key in history_cache:
+        cached_data = history_cache[cache_key]
+        if (datetime.now() - cached_data['timestamp']).seconds < HISTORY_CACHE_DURATION:
+            print(f"✓ Using cached history ({len(cached_data['data']['history'])} points)")
+            return cached_data['data']
+    
+    print(f"📈 Fetching history for {len(assets)} assets over {days} days...")
+    
     async with httpx.AsyncClient() as client:
         history_data = []
         
-        for asset in assets:
+        for i, asset in enumerate(assets):
             try:
-                # CoinGecko market chart endpoint (last N days)
+                print(f"  [{i+1}/{len(assets)}] Fetching {asset.symbol} history...")
+                
                 url = f"https://api.coingecko.com/api/v3/coins/{asset.coin_id}/market_chart"
                 params = {
                     'vs_currency': 'usd',
@@ -206,11 +251,9 @@ async def get_portfolio_history(assets: List[Asset], days: int = 7):
                     'interval': 'hourly' if days <= 1 else 'daily'
                 }
                 
-                response = await client.get(url, params=params, timeout=15)
-                response.raise_for_status()
+                response = await rate_limited_request(client, url, params)
                 data = response.json()
                 
-                # data['prices'] is array of [timestamp_ms, price]
                 prices = data.get('prices', [])
                 
                 history_data.append({
@@ -220,21 +263,22 @@ async def get_portfolio_history(assets: List[Asset], days: int = 7):
                     'prices': prices
                 })
                 
+            except HTTPException as e:
+                print(f"  ⚠️ Skipping {asset.coin_id}: {e.detail}")
+                continue
             except Exception as e:
-                print(f"Error fetching history for {asset.coin_id}: {e}")
+                print(f"  ❌ Error fetching {asset.coin_id}: {e}")
                 continue
         
-        # Aggregate portfolio value at each timestamp
         if not history_data:
-            return {'history': []}
+            return {'history': [], 'error': 'No historical data available'}
         
-        # Get all unique timestamps
+        # Aggregate portfolio value at each timestamp
         all_timestamps = set()
         for asset_history in history_data:
             for timestamp, _ in asset_history['prices']:
                 all_timestamps.add(timestamp)
         
-        # Sort timestamps
         sorted_timestamps = sorted(all_timestamps)
         
         # Calculate total portfolio value at each timestamp
@@ -243,7 +287,6 @@ async def get_portfolio_history(assets: List[Asset], days: int = 7):
             total_value = 0
             
             for asset_history in history_data:
-                # Find closest price for this timestamp
                 closest_price = None
                 min_diff = float('inf')
                 
@@ -262,24 +305,34 @@ async def get_portfolio_history(assets: List[Asset], days: int = 7):
                 'value': round(total_value, 2)
             })
         
-        return {
+        result = {
             'history': portfolio_history,
             'days': days,
             'data_points': len(portfolio_history)
         }
+        
+        # Cache the result
+        history_cache[cache_key] = {
+            'data': result,
+            'timestamp': datetime.now()
+        }
+        
+        print(f"✓ History fetched: {len(portfolio_history)} data points")
+        
+        return result
 
 @app.get("/search/{query}")
 async def search_crypto(query: str, limit: int = 20):
-    """Search for ANY cryptocurrency by name or symbol"""
+    """Search with rate limiting"""
     if len(query) < 2:
-        raise HTTPException(status_code=400, detail="Query must be at least 2 characters")
+        raise HTTPException(400, "Query must be at least 2 characters")
     
     async with httpx.AsyncClient() as client:
         try:
             url = "https://api.coingecko.com/api/v3/search"
             params = {'query': query}
-            response = await client.get(url, params=params, timeout=10)
-            response.raise_for_status()
+            
+            response = await rate_limited_request(client, url, params)
             data = response.json()
             
             coins = data.get('coins', [])[:limit]
@@ -301,20 +354,18 @@ async def search_crypto(query: str, limit: int = 20):
                 'results': results
             }
             
-        except httpx.HTTPError as e:
-            raise HTTPException(
-                status_code=503, 
-                detail=f"CoinGecko search failed: {str(e)}"
-            )
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(503, f"Search failed: {str(e)}")
 
 @app.get("/trending")
 async def get_trending():
-    """Get trending cryptocurrencies"""
+    """Get trending coins"""
     async with httpx.AsyncClient() as client:
         try:
             url = "https://api.coingecko.com/api/v3/search/trending"
-            response = await client.get(url, timeout=10)
-            response.raise_for_status()
+            response = await rate_limited_request(client, url, {})
             data = response.json()
             
             trending_coins = [
@@ -332,4 +383,12 @@ async def get_trending():
             return {'trending': trending_coins}
             
         except Exception as e:
-            raise HTTPException(status_code=503, detail=f"Failed to fetch trending: {str(e)}")
+            raise HTTPException(503, f"Failed to fetch trending: {str(e)}")
+
+# Clear old cache entries periodically
+@app.on_event("startup")
+async def startup_event():
+    print("🚀 Portfolio Service started")
+    print(f"⏱️ Rate limit: {API_RATE_LIMIT}s between calls")
+    print(f"💾 Price cache: {PRICE_CACHE_DURATION}s")
+    print(f"📊 History cache: {HISTORY_CACHE_DURATION}s")
