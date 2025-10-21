@@ -88,7 +88,7 @@ class Trade(models.Model):
 # Add to existing models.py
 
 class CryptoAsset(models.Model):
-    """User's crypto holdings"""
+    """User's crypto holdings - allows multiple purchases of same asset"""
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='crypto_assets')
     symbol = models.CharField(max_length=20)  # BTC, ETH, SOL
     coin_id = models.CharField(max_length=100, default='bitcoin')  # CoinGecko ID
@@ -100,7 +100,11 @@ class CryptoAsset(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        unique_together = ['user', 'symbol']  # One entry per symbol per user
+        ordering = ['-purchase_date', '-created_at']  # Most recent first
+        indexes = [
+            models.Index(fields=['user', 'symbol']),
+        ]
 
     def __str__(self):
-        return f"{self.user.username} - {self.amount} {self.symbol}"
+        date_str = self.purchase_date.strftime('%Y-%m-%d') if self.purchase_date else 'Unknown'
+        return f"{self.user.username} - {self.amount} {self.symbol} ({date_str})"

@@ -86,20 +86,52 @@ class CryptoAssetViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def portfolio_summary(self, request):
-        """Get complete portfolio with live prices"""
+        """Get complete portfolio with live prices - aggregates multiple purchases"""
         assets = self.get_queryset()
         
-        # Prepare data for portfolio service
-        asset_list = [
-            {
-                'symbol': asset.symbol,
+        # Group assets by symbol for aggregation
+        from collections import defaultdict
+        from decimal import Decimal
+        
+        grouped_assets = defaultdict(lambda: {
+            'symbol': '',
+            'coin_id': '',
+            'total_amount': Decimal('0'),
+            'total_cost': Decimal('0'),
+            'purchases': []
+        })
+        
+        for asset in assets:
+            key = asset.symbol
+            grouped_assets[key]['symbol'] = asset.symbol
+            grouped_assets[key]['coin_id'] = asset.coin_id
+            grouped_assets[key]['total_amount'] += asset.amount
+            
+            purchase = {
+                'id': asset.id,
                 'amount': float(asset.amount),
-                'coin_id': asset.coin_id,
                 'purchase_price': float(asset.purchase_price) if asset.purchase_price else None,
                 'purchase_date': asset.purchase_date.isoformat() if asset.purchase_date else None,
                 'notes': asset.notes
             }
-            for asset in assets
+            
+            if asset.purchase_price:
+                cost = asset.amount * asset.purchase_price
+                grouped_assets[key]['total_cost'] += cost
+                purchase['cost'] = float(cost)
+            
+            grouped_assets[key]['purchases'].append(purchase)
+        
+        # Prepare data for portfolio service
+        asset_list = [
+            {
+                'symbol': data['symbol'],
+                'amount': float(data['total_amount']),
+                'coin_id': data['coin_id'],
+                'purchase_price': float(data['total_cost'] / data['total_amount']) if data['total_amount'] > 0 and data['total_cost'] > 0 else None,
+                'purchases': data['purchases']  # Include individual purchases
+            }
+            for data in grouped_assets.values()
         ]
         
         if not asset_list:
