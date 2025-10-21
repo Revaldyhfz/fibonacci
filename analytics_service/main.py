@@ -191,17 +191,29 @@ def root():
     return {"message": "Advanced Analytics microservice is running"}
 
 @app.get("/stats/overall")
-def get_overall_stats():
-    """Compute detailed trading analytics from the DB."""
+def get_overall_stats(time_filter: str = "all"):
+    """Compute detailed trading analytics from the DB with time filtering."""
+    from datetime import datetime, timedelta
+    
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("""
+    
+    # Build date filter
+    date_filter = ""
+    if time_filter == "day":
+        date_filter = "AND trade_date >= CURRENT_DATE"
+    elif time_filter == "week":
+        date_filter = "AND trade_date >= CURRENT_DATE - INTERVAL '7 days'"
+    elif time_filter == "month":
+        date_filter = "AND trade_date >= CURRENT_DATE - INTERVAL '30 days'"
+    
+    cur.execute(f"""
         SELECT 
             symbol, strategy_id, pnl, pnl_percent, trade_date, time,
             entry_price, position_size,
             (CASE WHEN pnl > 0 THEN 1 ELSE 0 END) AS winner
         FROM core_trade
-        WHERE pnl IS NOT NULL
+        WHERE pnl IS NOT NULL {date_filter}
         ORDER BY trade_date ASC
     """)
     trades = cur.fetchall()
@@ -294,12 +306,22 @@ def get_overall_stats():
     }
 
 @app.get("/stats/session")
-def get_session_stats():
+def get_session_stats(time_filter: str = "all"):
     """Return PnL, winrate, and trade count grouped by trading session."""
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("""
-        SELECT pnl, time FROM core_trade WHERE pnl IS NOT NULL;
+    
+    # Build date filter
+    date_filter = ""
+    if time_filter == "day":
+        date_filter = "AND trade_date >= CURRENT_DATE"
+    elif time_filter == "week":
+        date_filter = "AND trade_date >= CURRENT_DATE - INTERVAL '7 days'"
+    elif time_filter == "month":
+        date_filter = "AND trade_date >= CURRENT_DATE - INTERVAL '30 days'"
+    
+    cur.execute(f"""
+        SELECT pnl, time FROM core_trade WHERE pnl IS NOT NULL {date_filter};
     """)
     trades = cur.fetchall()
     cur.close()
@@ -338,12 +360,22 @@ def get_session_stats():
     return stats
 
 @app.get("/stats/symbol")
-def get_symbol_stats():
+def get_symbol_stats(time_filter: str = "all"):
     """Return performance metrics grouped by trading symbol."""
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("""
-        SELECT symbol, pnl FROM core_trade WHERE pnl IS NOT NULL;
+    
+    # Build date filter
+    date_filter = ""
+    if time_filter == "day":
+        date_filter = "AND trade_date >= CURRENT_DATE"
+    elif time_filter == "week":
+        date_filter = "AND trade_date >= CURRENT_DATE - INTERVAL '7 days'"
+    elif time_filter == "month":
+        date_filter = "AND trade_date >= CURRENT_DATE - INTERVAL '30 days'"
+    
+    cur.execute(f"""
+        SELECT symbol, pnl FROM core_trade WHERE pnl IS NOT NULL {date_filter};
     """)
     trades = cur.fetchall()
     cur.close()
@@ -391,12 +423,22 @@ def get_equity_curve():
     return curve
 
 @app.get("/stats/hourly")
-def get_hourly_stats():
+def get_hourly_stats(time_filter: str = "all"):
     """Return performance by hour of day."""
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("""
-        SELECT time, pnl FROM core_trade WHERE pnl IS NOT NULL AND time IS NOT NULL;
+    
+    # Build date filter
+    date_filter = ""
+    if time_filter == "day":
+        date_filter = "AND trade_date >= CURRENT_DATE"
+    elif time_filter == "week":
+        date_filter = "AND trade_date >= CURRENT_DATE - INTERVAL '7 days'"
+    elif time_filter == "month":
+        date_filter = "AND trade_date >= CURRENT_DATE - INTERVAL '30 days'"
+    
+    cur.execute(f"""
+        SELECT time, pnl FROM core_trade WHERE pnl IS NOT NULL AND time IS NOT NULL {date_filter};
     """)
     trades = cur.fetchall()
     cur.close()

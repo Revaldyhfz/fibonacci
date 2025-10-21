@@ -29,11 +29,14 @@ export default function AnalyticsPage() {
 
       const headers = { Authorization: `Bearer ${tokens.access}` };
       
+      // Add time_filter query parameter
+      const filterParam = `?time_filter=${timeFilter}`;
+      
       const [overallRes, sessionsRes, symbolsRes, hourlyRes] = await Promise.all([
-        fetch("http://127.0.0.1:8000/analytics/stats/overall", { headers }),
-        fetch("http://127.0.0.1:8000/analytics/stats/session", { headers }),
-        fetch("http://127.0.0.1:8000/analytics/stats/symbol", { headers }),
-        fetch("http://127.0.0.1:8000/analytics/stats/hourly", { headers })
+        fetch(`http://127.0.0.1:8000/analytics/stats/overall${filterParam}`, { headers }),
+        fetch(`http://127.0.0.1:8000/analytics/stats/session${filterParam}`, { headers }),
+        fetch(`http://127.0.0.1:8000/analytics/stats/symbol${filterParam}`, { headers }),
+        fetch(`http://127.0.0.1:8000/analytics/stats/hourly${filterParam}`, { headers })
       ]);
 
       if (!overallRes.ok || !sessionsRes.ok || !symbolsRes.ok || !hourlyRes.ok) {
@@ -70,25 +73,29 @@ export default function AnalyticsPage() {
     const descriptions = {
       sharpe_ratio: {
         thresholds: { excellent: 2, good: 1, acceptable: 0 },
-        desc: value >= 2 ? 'Excellent risk-adjusted returns' : 
+        desc: value === 0 ? 'Need more trades for calculation' :
+              value >= 2 ? 'Excellent risk-adjusted returns' : 
               value >= 1 ? 'Good risk-adjusted returns' : 
               value >= 0 ? 'Acceptable returns' : 'Poor risk-adjusted returns'
       },
       sortino_ratio: {
         thresholds: { excellent: 2, good: 1, acceptable: 0 },
-        desc: value >= 2 ? 'Excellent downside protection' : 
+        desc: value === 0 ? 'Need more trades for calculation' :
+              value >= 2 ? 'Excellent downside protection' : 
               value >= 1 ? 'Good downside protection' : 
               'Needs improvement'
       },
       profit_factor: {
         thresholds: { excellent: 2, good: 1.5, acceptable: 1.25 },
-        desc: value >= 2 ? 'Strong profit generation' : 
+        desc: value === 0 ? 'No winning or losing trades yet' :
+              value >= 2 ? 'Strong profit generation' : 
               value >= 1.5 ? 'Good profit generation' : 
               value >= 1.25 ? 'Acceptable edge' : 'Insufficient edge'
       },
       calmar_ratio: {
         thresholds: { excellent: 3, good: 2, acceptable: 1 },
-        desc: value >= 3 ? 'Excellent return vs drawdown' : 
+        desc: value === 0 ? 'Need drawdown data for calculation' :
+              value >= 3 ? 'Excellent return vs drawdown' : 
               value >= 2 ? 'Good return vs drawdown' : 
               value >= 1 ? 'Acceptable' : 'High drawdown risk'
       }
@@ -216,26 +223,49 @@ export default function AnalyticsPage() {
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between my-6 gap-4">
           <div>
             <h2 className="text-2xl sm:text-3xl font-bold text-white mb-1">Professional Analytics</h2>
-            <p className="text-sm text-neutral-400">Risk-adjusted performance metrics</p>
+            <p className="text-sm text-neutral-400">
+              Risk-adjusted performance metrics
+              {timeFilter !== 'all' && ` - ${timeFilter === 'day' ? 'Today' : timeFilter === 'week' ? 'This Week' : 'This Month'}`}
+            </p>
           </div>
           <div className="flex gap-2 flex-wrap">
-            {["day", "week", "month", "all"].map((filter) => (
+            {[
+              { value: "day", label: "Today" },
+              { value: "week", label: "This Week" },
+              { value: "month", label: "This Month" },
+              { value: "all", label: "All Time" }
+            ].map((filter) => (
               <button
-                key={filter}
-                onClick={() => setTimeFilter(filter)}
+                key={filter.value}
+                onClick={() => setTimeFilter(filter.value)}
                 className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                  timeFilter === filter
+                  timeFilter === filter.value
                     ? "bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-lg shadow-blue-500/20"
                     : "bg-[#141414] border border-neutral-700 text-neutral-300 hover:border-neutral-600"
                 }`}
               >
-                {filter === "all" ? "All Time" : filter === "day" ? "Today" : filter === "week" ? "This Week" : "This Month"}
+                {filter.label}
               </button>
             ))}
           </div>
         </div>
 
         {/* Risk-Adjusted Performance Metrics */}
+        {overallStats && overallStats.total_trades < 10 && (
+          <div className="mb-4 bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4 flex items-start gap-3">
+            <svg className="w-5 h-5 text-yellow-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <div className="flex-1">
+              <div className="text-sm font-medium text-yellow-400 mb-1">Limited Data Notice</div>
+              <div className="text-xs text-neutral-300">
+                You have {overallStats.total_trades} trade{overallStats.total_trades !== 1 ? 's' : ''} in this period. 
+                Some advanced metrics require at least 10-20 trades for meaningful statistical analysis.
+                {timeFilter !== 'all' && ' Try viewing "All Time" for more comprehensive analytics.'}
+              </div>
+            </div>
+          </div>
+        )}
         <div className="mb-6 bg-gradient-to-br from-blue-500/10 to-purple-600/10 border border-blue-500/30 rounded-xl p-6">
           <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
             <svg className="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
