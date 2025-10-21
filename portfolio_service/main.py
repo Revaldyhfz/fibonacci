@@ -1,6 +1,6 @@
 # portfolio_service/main.py
 from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware  # ADD THIS
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime, timedelta
@@ -8,7 +8,6 @@ import httpx
 
 app = FastAPI(title="Crypto Portfolio Service")
 
-# ADD CORS MIDDLEWARE
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
@@ -23,7 +22,7 @@ CACHE_DURATION = 300  # 5 minutes
 
 class Asset(BaseModel):
     symbol: str
-    coin_id: str  # CoinGecko ID (e.g., "bitcoin", "ethereum")
+    coin_id: str
     amount: float
     purchase_price: Optional[float] = None
     purchase_date: Optional[datetime] = None
@@ -43,18 +42,14 @@ def root():
         "endpoints": {
             "search": "/search/{query} - Search for any cryptocurrency",
             "price": "/price/{coin_id} - Get live price for any coin",
-            "portfolio": "/portfolio/calculate - Calculate portfolio value"
+            "portfolio": "/portfolio/calculate - Calculate portfolio value",
+            "history": "/portfolio/history - Get portfolio value history"
         }
     }
 
 @app.get("/price/{coin_id}")
 async def get_crypto_price(coin_id: str):
-    """
-    Get current price for ANY cryptocurrency using CoinGecko API
-    coin_id examples: bitcoin, ethereum, solana, dogecoin, shiba-inu
-    
-    CoinGecko is FREE and supports 10,000+ cryptocurrencies
-    """
+    """Get current price for ANY cryptocurrency using CoinGecko API"""
     coin_id = coin_id.lower()
     
     # Check cache first
@@ -110,10 +105,7 @@ async def get_crypto_price(coin_id: str):
 
 @app.post("/portfolio/calculate")
 async def calculate_portfolio(assets: List[Asset]):
-    """
-    Calculate portfolio value for ANY cryptocurrency
-    No hardcoded symbols - works with all 10,000+ coins on CoinGecko
-    """
+    """Calculate portfolio value for ANY cryptocurrency"""
     if not assets:
         return PortfolioSummary(
             total_value_usd=0,
@@ -129,12 +121,10 @@ async def calculate_portfolio(assets: List[Asset]):
     
     for asset in assets:
         try:
-            # Get current price using the stored coin_id
             price_data = await get_crypto_price(asset.coin_id)
             current_price = price_data['price_usd']
             current_value = asset.amount * current_price
             
-            # Calculate P&L if purchase price provided
             if asset.purchase_price:
                 cost = asset.amount * asset.purchase_price
                 pnl = current_value - cost
@@ -164,7 +154,6 @@ async def calculate_portfolio(assets: List[Asset]):
             })
             
         except HTTPException as e:
-            # If price fetch fails, add asset with error
             enriched_assets.append({
                 'symbol': asset.symbol.upper(),
                 'coin_id': asset.coin_id,
@@ -194,14 +183,94 @@ async def calculate_portfolio(assets: List[Asset]):
         assets=enriched_assets
     )
 
+@app.post("/portfolio/history")
+async def get_portfolio_history(assets: List[Asset], days: int = 7):
+    """
+    Get historical portfolio value over the last N days
+    Returns data points for charting
+    """
+    if not assets:
+        return {'history': []}
+    
+    # Get historical data for each asset
+    async with httpx.AsyncClient() as client:
+        history_data = []
+        
+        for asset in assets:
+            try:
+                # CoinGecko market chart endpoint (last N days)
+                url = f"https://api.coingecko.com/api/v3/coins/{asset.coin_id}/market_chart"
+                params = {
+                    'vs_currency': 'usd',
+                    'days': str(days),
+                    'interval': 'hourly' if days <= 1 else 'daily'
+                }
+                
+                response = await client.get(url, params=params, timeout=15)
+                response.raise_for_status()
+                data = response.json()
+                
+                # data['prices'] is array of [timestamp_ms, price]
+                prices = data.get('prices', [])
+                
+                history_data.append({
+                    'coin_id': asset.coin_id,
+                    'symbol': asset.symbol,
+                    'amount': asset.amount,
+                    'prices': prices
+                })
+                
+            except Exception as e:
+                print(f"Error fetching history for {asset.coin_id}: {e}")
+                continue
+        
+        # Aggregate portfolio value at each timestamp
+        if not history_data:
+            return {'history': []}
+        
+        # Get all unique timestamps
+        all_timestamps = set()
+        for asset_history in history_data:
+            for timestamp, _ in asset_history['prices']:
+                all_timestamps.add(timestamp)
+        
+        # Sort timestamps
+        sorted_timestamps = sorted(all_timestamps)
+        
+        # Calculate total portfolio value at each timestamp
+        portfolio_history = []
+        for timestamp in sorted_timestamps:
+            total_value = 0
+            
+            for asset_history in history_data:
+                # Find closest price for this timestamp
+                closest_price = None
+                min_diff = float('inf')
+                
+                for ts, price in asset_history['prices']:
+                    diff = abs(ts - timestamp)
+                    if diff < min_diff:
+                        min_diff = diff
+                        closest_price = price
+                
+                if closest_price:
+                    total_value += closest_price * asset_history['amount']
+            
+            portfolio_history.append({
+                'timestamp': timestamp,
+                'date': datetime.fromtimestamp(timestamp / 1000).isoformat(),
+                'value': round(total_value, 2)
+            })
+        
+        return {
+            'history': portfolio_history,
+            'days': days,
+            'data_points': len(portfolio_history)
+        }
+
 @app.get("/search/{query}")
 async def search_crypto(query: str, limit: int = 20):
-    """
-    Search for ANY cryptocurrency by name or symbol
-    Examples: "bitcoin", "doge", "shiba", "pepe"
-    
-    Returns coin_id that can be used for price lookup
-    """
+    """Search for ANY cryptocurrency by name or symbol"""
     if len(query) < 2:
         raise HTTPException(status_code=400, detail="Query must be at least 2 characters")
     
@@ -213,11 +282,10 @@ async def search_crypto(query: str, limit: int = 20):
             response.raise_for_status()
             data = response.json()
             
-            # Return top results with all necessary info
             coins = data.get('coins', [])[:limit]
             results = [
                 {
-                    'id': coin['id'],  # This is the coin_id to store in DB
+                    'id': coin['id'],
                     'symbol': coin['symbol'].upper(),
                     'name': coin['name'],
                     'thumb': coin.get('thumb', ''),

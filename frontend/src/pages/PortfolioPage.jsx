@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import axios from "axios";
 
 export default function PortfolioPage() {
@@ -8,7 +9,10 @@ export default function PortfolioPage() {
   const nav = useNavigate();
   const [portfolio, setPortfolio] = useState(null);
   const [assets, setAssets] = useState([]);
+  const [historyData, setHistoryData] = useState([]);
+  const [timeRange, setTimeRange] = useState(7);
   const [loading, setLoading] = useState(true);
+  const [chartLoading, setChartLoading] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showChartModal, setShowChartModal] = useState(false);
   const [selectedCoin, setSelectedCoin] = useState(null);
@@ -28,13 +32,17 @@ export default function PortfolioPage() {
     fetchPortfolio();
   }, []);
 
+  useEffect(() => {
+    if (portfolio?.assets && portfolio.assets.length > 0) {
+      fetchHistoryData();
+    }
+  }, [portfolio?.assets, timeRange]);
+
   // TradingView Chart Effect
   useEffect(() => {
     if (showChartModal && selectedCoin && chartContainerRef.current) {
-      // Clear previous chart
       chartContainerRef.current.innerHTML = '';
       
-      // Create TradingView widget
       const script = document.createElement('script');
       script.src = 'https://s3.tradingview.com/tv.js';
       script.async = true;
@@ -44,7 +52,7 @@ export default function PortfolioPage() {
             container_id: chartContainerRef.current.id,
             width: '100%',
             height: 500,
-            symbol: `BINANCE:${selectedCoin.symbol}USDT`, // Try Binance first
+            symbol: `BINANCE:${selectedCoin.symbol}USDT`,
             interval: 'D',
             timezone: 'Etc/UTC',
             theme: 'dark',
@@ -91,6 +99,48 @@ export default function PortfolioPage() {
       console.error("Failed to fetch portfolio:", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchHistoryData = async () => {
+    setChartLoading(true);
+    try {
+      const assetList = portfolio.assets.map(asset => ({
+        symbol: asset.symbol,
+        coin_id: asset.coin_id,
+        amount: asset.amount
+      }));
+      
+      const res = await axios.post(
+        `http://127.0.0.1:8002/portfolio/history?days=${timeRange}`,
+        assetList,
+        { timeout: 20000 }
+      );
+      
+      // Format data for recharts
+      const formattedData = res.data.history.map(point => ({
+        timestamp: point.timestamp,
+        date: new Date(point.date).toLocaleDateString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          hour: timeRange === 1 ? '2-digit' : undefined,
+          minute: timeRange === 1 ? '2-digit' : undefined
+        }),
+        value: point.value,
+        fullDate: new Date(point.date).toLocaleString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        })
+      }));
+      
+      setHistoryData(formattedData);
+    } catch (error) {
+      console.error("Failed to fetch history:", error);
+    } finally {
+      setChartLoading(false);
     }
   };
 
@@ -153,6 +203,21 @@ export default function PortfolioPage() {
   const openChart = (asset) => {
     setSelectedCoin(asset);
     setShowChartModal(true);
+  };
+
+  const CustomTooltip = ({ active, payload }) => {
+    if (active && payload && payload.length) {
+      const data = payload[0].payload;
+      return (
+        <div className="bg-[#141414] border border-neutral-700 rounded-lg p-3 shadow-xl">
+          <div className="text-xs text-neutral-400 mb-1">{data.fullDate}</div>
+          <div className="text-lg font-bold text-emerald-500">
+            ${data.value.toLocaleString()}
+          </div>
+        </div>
+      );
+    }
+    return null;
   };
 
   if (loading) {
@@ -239,6 +304,87 @@ export default function PortfolioPage() {
                   {portfolio.total_pnl_percent.toFixed(2)}%
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* Portfolio Value Chart */}
+          {portfolio?.assets && portfolio.assets.length > 0 && (
+            <div className="bg-[#141414] border border-neutral-800 rounded-xl p-6 mb-6">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-lg font-bold text-white mb-1">Portfolio Value</h3>
+                  <p className="text-sm text-neutral-400">Live tracking of your crypto holdings</p>
+                </div>
+                <div className="flex gap-2">
+                  {[
+                    { label: '24H', value: 1 },
+                    { label: '7D', value: 7 },
+                    { label: '30D', value: 30 },
+                    { label: '90D', value: 90 }
+                  ].map((range) => (
+                    <button
+                      key={range.value}
+                      onClick={() => setTimeRange(range.value)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                        timeRange === range.value
+                          ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-lg shadow-blue-500/20'
+                          : 'bg-[#0a0a0a] border border-neutral-700 text-neutral-300 hover:border-neutral-600'
+                      }`}
+                    >
+                      {range.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {chartLoading ? (
+                <div className="h-80 flex items-center justify-center">
+                  <div className="text-center">
+                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-neutral-600 border-t-blue-500 mb-2"></div>
+                    <div className="text-sm text-neutral-400">Loading chart data...</div>
+                  </div>
+                </div>
+              ) : historyData.length > 0 ? (
+                <ResponsiveContainer width="100%" height={320}>
+                  <LineChart data={historyData}>
+                    <defs>
+                      <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
+                        <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#1a1a1a" />
+                    <XAxis 
+                      dataKey="date" 
+                      stroke="#525252"
+                      style={{ fontSize: '12px' }}
+                    />
+                    <YAxis 
+                      stroke="#525252"
+                      style={{ fontSize: '12px' }}
+                      tickFormatter={(value) => `$${value.toLocaleString()}`}
+                    />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Line 
+                      type="monotone" 
+                      dataKey="value" 
+                      stroke="#10b981" 
+                      strokeWidth={2}
+                      dot={false}
+                      fill="url(#colorValue)"
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-80 flex items-center justify-center">
+                  <div className="text-center text-neutral-400">
+                    <svg className="w-16 h-16 mx-auto mb-3 text-neutral-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                    </svg>
+                    <p>No chart data available</p>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
