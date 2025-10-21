@@ -13,8 +13,17 @@ export default function TradesPage() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [loading, setLoading] = useState(true);
   const [formData, setFormData] = useState({
-    symbol: "", strategy: "", trade_date: "", close_date: "",
-    entry_price: "", exit_price: "", position_size: "", fees: "0", notes: "", tags: ""
+    symbol: "", 
+    strategy: "", 
+    direction: "LONG", 
+    trade_date: "", 
+    close_date: "",
+    entry_price: "", 
+    exit_price: "", 
+    position_size: "", 
+    fees: "0", 
+    notes: "", 
+    tags: ""
   });
 
   useEffect(() => {
@@ -69,8 +78,17 @@ export default function TradesPage() {
       });
       setShowAddModal(false);
       setFormData({
-        symbol: "", strategy: "", trade_date: "", close_date: "",
-        entry_price: "", exit_price: "", position_size: "", fees: "0", notes: "", tags: ""
+        symbol: "", 
+        strategy: "", 
+        direction: "LONG", 
+        trade_date: "", 
+        close_date: "",
+        entry_price: "", 
+        exit_price: "", 
+        position_size: "", 
+        fees: "0", 
+        notes: "", 
+        tags: ""
       });
       await fetchTrades();
     } catch (error) {
@@ -298,7 +316,16 @@ export default function TradesPage() {
                     <div key={trade.id} className="bg-[#0a0a0a] border border-neutral-800 rounded-lg p-3 hover:border-neutral-700 transition-colors">
                       <div className="flex items-start justify-between mb-2">
                         <div>
-                          <h4 className="text-base font-bold text-white">{trade.symbol}</h4>
+                          <div className="flex items-center gap-2">
+                            <h4 className="text-base font-bold text-white">{trade.symbol}</h4>
+                            <span className={`text-xs font-bold px-2 py-0.5 rounded ${
+                              trade.direction === 'LONG' 
+                                ? 'bg-blue-500/20 text-blue-400' 
+                                : 'bg-orange-500/20 text-orange-400'
+                            }`}>
+                              {trade.direction}
+                            </span>
+                          </div>
                           <p className="text-xs text-neutral-400">
                             {new Date(trade.trade_date).toLocaleTimeString('en-US', {
                               hour: '2-digit',
@@ -377,6 +404,18 @@ export default function TradesPage() {
                     className="w-full px-3 py-2 bg-[#0a0a0a] border border-neutral-700 rounded-lg text-white text-sm placeholder-neutral-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                     placeholder="EURUSD"
                   />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-neutral-300 mb-1">Direction</label>
+                  <select
+                    name="direction"
+                    value={formData.direction}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 bg-[#0a0a0a] border border-neutral-700 rounded-lg text-white text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                  >
+                    <option value="LONG">Long (Buy)</option>
+                    <option value="SHORT">Short (Sell)</option>
+                  </select>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-neutral-300 mb-1">Strategy</label>

@@ -19,7 +19,7 @@ class TradeSerializer(serializers.ModelSerializer):
     class Meta:
         model = Trade
         fields = [
-            'id', 'symbol', 'strategy', 'entry_price', 'exit_price',
+            'id', 'symbol', 'strategy', 'direction', 'entry_price', 'exit_price',
             'position_size', 'fees', 'pnl', 'pnl_percent',
             'trade_date', 'close_date', 'notes', 'tags', 'screenshot',
             'is_winner', 'created_at', 'updated_at'
