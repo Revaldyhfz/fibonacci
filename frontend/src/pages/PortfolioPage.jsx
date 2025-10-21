@@ -4,7 +4,7 @@ import { useAuth } from "../context/AuthContext";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import axios from "axios";
 
-// Debounce hook to prevent rapid API calls
+// Debounce hook
 function useDebounce(value, delay) {
   const [debouncedValue, setDebouncedValue] = useState(value);
 
@@ -35,7 +35,7 @@ export default function PortfolioPage() {
   const [searchLoading, setSearchLoading] = useState(false);
   const chartContainerRef = useRef(null);
   const abortControllerRef = useRef(null);
-  const cacheRef = useRef({}); // Client-side cache for history data
+  const cacheRef = useRef({});
   const [formData, setFormData] = useState({
     symbol: "",
     coin_id: "",
@@ -45,15 +45,12 @@ export default function PortfolioPage() {
     notes: ""
   });
 
-  // Debounce timeRange to prevent race conditions
   const debouncedTimeRange = useDebounce(timeRange, 300);
 
-  // Fetch initial portfolio and asset list
   useEffect(() => {
     fetchPortfolio();
   }, []);
 
-  // Fetch history data when portfolio assets or debounced time range changes
   useEffect(() => {
     if (!portfolio?.assets || portfolio.assets.length === 0) {
       setHistoryData([]);
@@ -61,22 +58,18 @@ export default function PortfolioPage() {
       return;
     }
 
-    // Cancel previous request
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
-      console.log("🔄 Cancelled previous history fetch request");
     }
 
-    // Check cache first - instant response!
     const cacheKey = `${debouncedTimeRange}`;
     if (cacheRef.current[cacheKey]) {
       console.log(`✅ Using cached data for ${debouncedTimeRange}D`);
       setHistoryData(cacheRef.current[cacheKey]);
       setChartLoading(false);
-      return; // Don't fetch, use cache!
+      return;
     }
 
-    // Create new abort controller and fetch
     abortControllerRef.current = new AbortController();
     fetchHistoryData(debouncedTimeRange, abortControllerRef.current.signal);
 
@@ -87,7 +80,6 @@ export default function PortfolioPage() {
     };
   }, [portfolio?.assets, debouncedTimeRange]);
 
-  // TradingView Chart Effect
   useEffect(() => {
     let tvScript = null;
 
@@ -125,11 +117,6 @@ export default function PortfolioPage() {
             if (chartContainerRef.current) {
               chartContainerRef.current.innerHTML = '<p class="text-red-500 text-center">Failed to load TradingView chart.</p>';
             }
-          }
-        } else {
-          console.error("TradingView library not loaded or chart container not found.");
-          if (chartContainerRef.current) {
-            chartContainerRef.current.innerHTML = '<p class="text-red-500 text-center">Failed to load TradingView library.</p>';
           }
         }
       };
@@ -181,7 +168,7 @@ export default function PortfolioPage() {
 
   const fetchHistoryData = async (days, signal) => {
     setChartLoading(true);
-    setHistoryData([]); // Clear previous data for better UX
+    setHistoryData([]);
 
     if (!portfolio || !portfolio.assets || portfolio.assets.length === 0) {
       console.warn("fetchHistoryData called with no portfolio assets.");
@@ -189,73 +176,73 @@ export default function PortfolioPage() {
       return;
     }
 
-    console.log("📦 Portfolio structure:", portfolio);
-    console.log("📦 Portfolio assets:", portfolio.assets);
-
     try {
-      // The portfolio.assets from backend already has the correct structure
-      // It includes: symbol, coin_id, amount (total_amount aggregated)
       const assetList = portfolio.assets.map(asset => ({
         symbol: asset.symbol,
         coin_id: asset.coin_id,
-        amount: asset.amount || 0  // Use amount directly from portfolio.assets
+        amount: parseFloat(asset.amount) || 0,
+        purchase_price: asset.purchase_price ? parseFloat(asset.purchase_price) : null,
+        purchase_date: asset.purchase_date || null,
+        notes: asset.notes || null
       }));
 
-      console.log("📊 Asset list for history:", assetList);
+      console.log(`📊 Fetching history for ${assetList.length} assets (${days}D)`);
 
       const validAssetList = assetList.filter(a => {
-        const isValid = a.symbol && a.coin_id && typeof a.amount === 'number' && a.amount > 0;
+        const isValid = a.symbol && a.coin_id && a.amount > 0;
         if (!isValid) {
           console.warn("Invalid asset filtered out:", a);
         }
         return isValid;
       });
 
-      console.log("✅ Valid assets for history:", validAssetList);
-
       if (validAssetList.length === 0) {
-        console.warn("No valid assets found to fetch history for.");
+        console.warn("No valid assets to fetch history for.");
         setChartLoading(false);
         return;
       }
 
       const tokens = JSON.parse(localStorage.getItem("tokens"));
-      if (!tokens?.access) throw new Error("Authentication token not found for history fetch.");
-      const headers = { Authorization: `Bearer ${tokens.access}` };
-
+      if (!tokens?.access) throw new Error("Authentication token required.");
+      
       const historyUrl = `http://127.0.0.1:8000/portfolio/portfolio/history?days=${days}`;
+
+      console.log(`🌐 POST ${historyUrl}`);
+      console.log(`📦 Sending ${validAssetList.length} assets:`, validAssetList);
 
       const res = await axios.post(
         historyUrl,
         validAssetList,
         {
-          headers: headers,
+          headers: { 
+            'Authorization': `Bearer ${tokens.access}`,
+            'Content-Type': 'application/json'
+          },
           timeout: 30000,
           signal: signal
         }
       );
 
       if (signal?.aborted) {
-        console.log("History fetch aborted during processing.");
+        console.log("History fetch aborted.");
         return;
       }
 
+      console.log(`✅ History response:`, res.data);
+
       if (res.data.error) {
-        console.error("Backend error fetching history:", res.data.error);
         throw new Error(res.data.error);
       }
 
       const history = res.data?.history;
-      if (!Array.isArray(history)) {
-        console.error("Invalid history data received:", res.data);
-        throw new Error("Invalid history data format received from backend.");
+      if (!Array.isArray(history) || history.length === 0) {
+        console.warn("No history data received");
+        setHistoryData([]);
+        setChartLoading(false);
+        return;
       }
 
       const formattedData = history.map(point => {
-        if (typeof point.timestamp !== 'number' || typeof point.value !== 'number' || !point.date) {
-          console.warn("Skipping invalid history point:", point);
-          return null;
-        }
         const pointDate = new Date(point.date);
         return {
           timestamp: point.timestamp,
@@ -274,22 +261,18 @@ export default function PortfolioPage() {
             minute: '2-digit'
           })
         };
-      }).filter(Boolean);
+      }).filter(p => p.value > 0);
 
-      // 🔥 SAVE TO CACHE!
       cacheRef.current[days] = formattedData;
 
-      console.log(`✅ Fetched and cached ${formattedData.length} points for ${days}D`);
-      if (formattedData.length === 0) {
-        console.warn(`Received no valid history data points for ${days} days range.`);
-      }
-
+      console.log(`✅ Cached ${formattedData.length} history points for ${days}D`);
       setHistoryData(formattedData);
     } catch (error) {
       if (axios.isCancel(error)) {
-        console.log("History fetch cancelled:", error.message);
+        console.log("History fetch cancelled");
       } else if (!signal?.aborted) {
-        console.error("Failed to fetch or process history:", error);
+        console.error("❌ History fetch error:", error);
+        console.error("Error response:", error.response?.data);
         setHistoryData([]);
       }
     } finally {
@@ -300,7 +283,7 @@ export default function PortfolioPage() {
   };
 
   const searchCrypto = async (query) => {
-    if (query.length < 2) {
+    if (query.length < 1) {
       setSearchResults([]);
       return;
     }
@@ -311,6 +294,7 @@ export default function PortfolioPage() {
       const headers = { Authorization: `Bearer ${tokens.access}` };
       const searchUrl = `http://127.0.0.1:8000/portfolio/search/${query}`;
       const res = await axios.get(searchUrl, { headers });
+      console.log("🔍 Search results:", res.data);
       setSearchResults(res.data.results || []);
     } catch (error) {
       console.error("Search failed:", error);
@@ -323,7 +307,7 @@ export default function PortfolioPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.coin_id || !formData.symbol) {
-      alert("Please search and select a cryptocurrency.");
+      alert("Please search and select a cryptocurrency or enter manually.");
       return;
     }
     if (!formData.amount || parseFloat(formData.amount) <= 0) {
@@ -349,7 +333,6 @@ export default function PortfolioPage() {
       setSearchResults([]);
       setShowAddModal(false);
       
-      // Clear cache when new asset is added
       cacheRef.current = {};
       
       await fetchPortfolio();
@@ -372,7 +355,6 @@ export default function PortfolioPage() {
         { headers: headers }
       );
       
-      // Clear cache when asset is deleted
       cacheRef.current = {};
       
       await fetchPortfolio();
@@ -455,7 +437,12 @@ export default function PortfolioPage() {
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 gap-4">
             <div>
               <h2 className="text-2xl font-bold text-white mb-1">Crypto Portfolio</h2>
-              <p className="text-sm text-neutral-400">Track 10,000+ cryptocurrencies in real-time</p>
+              <p className="text-sm text-neutral-400">
+                Track cryptocurrencies with <span className="text-blue-400 font-semibold">Binance API</span>
+                <span className="text-xs ml-2 bg-green-500/10 text-green-400 px-2 py-0.5 rounded">
+                  1200 req/min
+                </span>
+              </p>
             </div>
             <button
               onClick={() => setShowAddModal(true)}
@@ -521,7 +508,6 @@ export default function PortfolioPage() {
                       }`}
                     >
                       {range.label}
-                      {/* Cache indicator */}
                       {cacheRef.current[range.value] && (
                         <span className="ml-1 text-[10px] opacity-60">✓</span>
                       )}
@@ -618,7 +604,7 @@ export default function PortfolioPage() {
                           </td>
                           <td className="px-4 py-3 text-right text-sm text-white">{asset.total_amount?.toFixed(6)}</td>
                           <td className="px-4 py-3 text-right text-sm text-white">
-                            ${asset.current_price?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            ${asset.current_price?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 })}
                           </td>
                           <td className="px-4 py-3 text-right text-sm font-semibold text-white">
                             ${asset.current_value?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -709,14 +695,17 @@ export default function PortfolioPage() {
             <div className="flex-grow overflow-y-auto p-4">
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-neutral-300 mb-1">Search Cryptocurrency</label>
+                  <label className="block text-sm font-medium text-neutral-300 mb-1">
+                    Search Cryptocurrency
+                    <span className="ml-2 text-xs text-blue-400">(Powered by Binance)</span>
+                  </label>
                   <input
                     type="text"
-                    placeholder="Search Bitcoin, Ethereum..."
+                    placeholder="Search BTC, ETH, SOL..."
                     onChange={(e) => searchCrypto(e.target.value)}
                     className="w-full px-3 py-2 bg-[#0a0a0a] border border-neutral-700 rounded-lg text-white placeholder-neutral-500 focus:outline-none focus:border-blue-500 text-sm"
                   />
-                  {searchLoading && <p className="text-xs text-neutral-500 mt-1">Searching...</p>}
+                  {searchLoading && <p className="text-xs text-neutral-500 mt-1">Searching Binance pairs...</p>}
                   {searchResults.length > 0 && (
                     <div className="mt-2 max-h-40 overflow-y-auto bg-[#0a0a0a] border border-neutral-700 rounded-lg">
                       {searchResults.map((coin) => (
@@ -724,23 +713,76 @@ export default function PortfolioPage() {
                           key={coin.id}
                           type="button"
                           onClick={() => {
-                            setFormData({ ...formData, symbol: coin.symbol.toUpperCase(), coin_id: coin.id });
+                            setFormData({ 
+                              ...formData, 
+                              symbol: coin.symbol.toUpperCase(), 
+                              coin_id: coin.binance_symbol || coin.id 
+                            });
                             setSearchResults([]);
                           }}
-                          className="w-full px-3 py-2 text-left hover:bg-neutral-800 transition-colors flex items-center gap-2 text-sm"
+                          className="w-full px-3 py-2 text-left hover:bg-neutral-800 transition-colors flex items-center justify-between gap-2 text-sm"
                         >
-                          <span className="font-medium text-white">{coin.symbol.toUpperCase()}</span>
-                          <span className="text-neutral-400">-</span>
-                          <span className="text-neutral-400">{coin.name}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-white">{coin.symbol}</span>
+                            <span className="text-neutral-500">-</span>
+                            <span className="text-neutral-400">{coin.name}</span>
+                          </div>
+                          <span className="text-xs text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded">
+                            Binance
+                          </span>
                         </button>
                       ))}
+                    </div>
+                  )}
+                  {searchResults.length === 0 && formData.symbol && !searchLoading && (
+                    <div className="mt-2 text-xs text-neutral-500 p-2 bg-yellow-500/10 border border-yellow-500/30 rounded">
+                      💡 Not on Binance? Use format: SYMBOL + "USDT" (e.g., BTCUSDT)
                     </div>
                   )}
                 </div>
 
                 {formData.coin_id && (
                   <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3">
-                    <p className="text-sm text-blue-400">✓ Selected: {formData.symbol} ({formData.coin_id})</p>
+                    <p className="text-sm text-blue-400">
+                      ✓ Selected: <span className="font-bold">{formData.symbol}</span>
+                      <span className="text-xs ml-2 text-neutral-400">({formData.coin_id})</span>
+                    </p>
+                  </div>
+                )}
+
+                {!formData.coin_id && (
+                  <div className="bg-neutral-800/50 border border-neutral-700 rounded-lg p-3">
+                    <details className="text-xs text-neutral-400">
+                      <summary className="cursor-pointer hover:text-white">
+                        ℹ️ Coin not on Binance? (Advanced)
+                      </summary>
+                      <div className="mt-2 space-y-2">
+                        <p className="text-neutral-300">For coins not listed on Binance, you can manually enter:</p>
+                        <div className="bg-[#0a0a0a] p-2 rounded border border-neutral-700">
+                          <label className="block text-xs mb-1">Symbol (e.g., PUMP)</label>
+                          <input
+                            type="text"
+                            placeholder="Enter symbol"
+                            value={formData.symbol}
+                            onChange={(e) => setFormData({...formData, symbol: e.target.value.toUpperCase()})}
+                            className="w-full px-2 py-1 bg-neutral-900 border border-neutral-700 rounded text-white text-xs"
+                          />
+                        </div>
+                        <div className="bg-[#0a0a0a] p-2 rounded border border-neutral-700">
+                          <label className="block text-xs mb-1">CoinGecko ID (e.g., pump-fun)</label>
+                          <input
+                            type="text"
+                            placeholder="Enter CoinGecko coin ID"
+                            value={formData.coin_id}
+                            onChange={(e) => setFormData({...formData, coin_id: e.target.value.toLowerCase()})}
+                            className="w-full px-2 py-1 bg-neutral-900 border border-neutral-700 rounded text-white text-xs"
+                          />
+                        </div>
+                        <p className="text-xs text-yellow-400">
+                          ⚠️ CoinGecko fallback has rate limits (~30/min). Prefer Binance pairs when possible.
+                        </p>
+                      </div>
+                    </details>
                   </div>
                 )}
 
@@ -793,7 +835,7 @@ export default function PortfolioPage() {
                 <button
                   type="submit"
                   className="w-full px-4 py-2 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white text-sm font-semibold rounded-lg transition-all shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-[#141414] focus:ring-blue-500 disabled:opacity-70 disabled:cursor-not-allowed"
-                  disabled={!formData.coin_id || !formData.amount}
+                  disabled={!formData.coin_id || !formData.amount || !formData.symbol}
                 >
                   Add Asset to Portfolio
                 </button>
