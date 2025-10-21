@@ -84,3 +84,23 @@ class Trade(models.Model):
     
     def __str__(self):
         return f"{self.symbol} ({self.trade_date.strftime('%Y-%m-%d')})"
+    
+# Add to existing models.py
+
+class CryptoAsset(models.Model):
+    """User's crypto holdings"""
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='crypto_assets')
+    symbol = models.CharField(max_length=20)  # BTC, ETH, SOL
+    coin_id = models.CharField(max_length=100, default='bitcoin')  # CoinGecko ID
+    amount = models.DecimalField(max_digits=20, decimal_places=8)
+    purchase_price = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    purchase_date = models.DateTimeField(null=True, blank=True)
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ['user', 'symbol']  # One entry per symbol per user
+
+    def __str__(self):
+        return f"{self.user.username} - {self.amount} {self.symbol}"

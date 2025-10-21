@@ -18,7 +18,21 @@ def analytics_proxy(request, path):
         return HttpResponse(resp.content, status=resp.status_code, content_type=resp.headers.get('content-type'))
     except Exception as e:
         return HttpResponse(f"Analytics service unavailable: {str(e)}", status=503)
+    
+def portfolio_proxy(request, path):
+    """Proxy requests to the portfolio microservice"""
+    try:
+        url = f"http://127.0.0.1:8002/{path}"
+        if request.method == 'GET':
+            resp = requests.get(url, params=request.GET)
+        else:
+            resp = requests.post(url, json=request.body, headers={'Content-Type': 'application/json'})
+        return HttpResponse(resp.content, status=resp.status_code, content_type=resp.headers.get('content-type'))
+    except Exception as e:
+        return HttpResponse(f"Portfolio service unavailable: {str(e)}", status=503)
 
+# In urlpatterns:
+path('portfolio/<path:path>', portfolio_proxy),
 urlpatterns = [
     path('admin/', admin.site.urls),
 
@@ -31,4 +45,5 @@ urlpatterns = [
     
     # Analytics microservice proxy
     path('analytics/<path:path>', analytics_proxy),
+    path('portfolio/<path:path>', portfolio_proxy),
 ]

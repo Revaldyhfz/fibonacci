@@ -1,8 +1,11 @@
-from rest_framework import viewsets, permissions
+from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from .models import Strategy, Trade
-from .serializers import StrategySerializer, TradeSerializer
+from .models import CryptoAsset, Strategy, Trade
+from .serializers import CryptoAssetSerializer, StrategySerializer, TradeSerializer
+import requests
+
+
 
 
 class StrategyViewSet(viewsets.ModelViewSet):
@@ -72,3 +75,52 @@ class TradeViewSet(viewsets.ModelViewSet):
                 "trade_date": worst_trade.trade_date.isoformat()
             } if worst_trade else None,
         })
+        
+        
+class CryptoAssetViewSet(viewsets.ModelViewSet):
+    serializer_class = CryptoAssetSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return CryptoAsset.objects.filter(user=self.request.user)
+
+    @action(detail=False, methods=['get'])
+    def portfolio_summary(self, request):
+        """Get complete portfolio with live prices"""
+        assets = self.get_queryset()
+        
+        # Prepare data for portfolio service
+        asset_list = [
+            {
+                'symbol': asset.symbol,
+                'amount': float(asset.amount),
+                'purchase_price': float(asset.purchase_price) if asset.purchase_price else None,
+                'purchase_date': asset.purchase_date.isoformat() if asset.purchase_date else None,
+                'notes': asset.notes
+            }
+            for asset in assets
+        ]
+        
+        if not asset_list:
+            return Response({
+                'total_value_usd': 0,
+                'total_cost': 0,
+                'total_pnl': 0,
+                'total_pnl_percent': 0,
+                'assets': []
+            })
+        
+        # Call portfolio microservice
+        try:
+            response = requests.post(
+                'http://127.0.0.1:8002/portfolio/calculate',
+                json=asset_list,
+                timeout=15
+            )
+            response.raise_for_status()
+            return Response(response.json())
+        except Exception as e:
+            return Response(
+                {'error': f'Portfolio service unavailable: {str(e)}'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )

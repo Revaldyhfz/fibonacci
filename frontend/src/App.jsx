@@ -6,6 +6,7 @@ import LoginPage from "./pages/LoginPage";
 import Dashboard from "./pages/Dashboard";
 import AnalyticsPage from "./pages/AnalyticsPage";
 import TradesPage from "./pages/TradesPage";
+import PortfolioPage from "./pages/PortfolioPage";
 
 function App() {
   return (
@@ -29,6 +30,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <TradesPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/portfolio"
+            element={
+              <ProtectedRoute>
+                <PortfolioPage />
               </ProtectedRoute>
             }
           />
