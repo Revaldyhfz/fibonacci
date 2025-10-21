@@ -1,10 +1,21 @@
+# portfolio_service/main.py
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware  # ADD THIS
 from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime, timedelta
 import httpx
 
 app = FastAPI(title="Crypto Portfolio Service")
+
+# ADD CORS MIDDLEWARE
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Price cache (5 minute TTL)
 price_cache = {}
