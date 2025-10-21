@@ -52,7 +52,7 @@ export default function PortfolioPage() {
   }, []);
 
   useEffect(() => {
-    if (!portfolio?.assets || portfolio.assets.length === 0) {
+    if (!assets || assets.length === 0) {
       setHistoryData([]);
       setChartLoading(false);
       return;
@@ -78,7 +78,7 @@ export default function PortfolioPage() {
         abortControllerRef.current.abort();
       }
     };
-  }, [portfolio?.assets, debouncedTimeRange]);
+  }, [assets, debouncedTimeRange]);
 
   useEffect(() => {
     let tvScript = null;
@@ -170,23 +170,35 @@ export default function PortfolioPage() {
     setChartLoading(true);
     setHistoryData([]);
 
-    if (!portfolio || !portfolio.assets || portfolio.assets.length === 0) {
-      console.warn("fetchHistoryData called with no portfolio assets.");
+    // CRITICAL: Use individual asset records from `assets` state, NOT aggregated portfolio.assets
+    // The aggregated assets don't have individual purchase dates!
+    if (!assets || assets.length === 0) {
+      console.warn("fetchHistoryData called with no assets.");
       setChartLoading(false);
       return;
     }
 
     try {
-      const assetList = portfolio.assets.map(asset => ({
+      // Map individual asset records (these have purchase_date for each entry)
+      const assetList = assets.map(asset => ({
         symbol: asset.symbol,
         coin_id: asset.coin_id,
         amount: parseFloat(asset.amount) || 0,
         purchase_price: asset.purchase_price ? parseFloat(asset.purchase_price) : null,
-        purchase_date: asset.purchase_date || null,
+        purchase_date: asset.purchase_date || null,  // Individual purchase date
         notes: asset.notes || null
       }));
 
-      console.log(`📊 Fetching history for ${assetList.length} assets (${days}D)`);
+      console.log(`📊 Fetching history for ${assetList.length} individual assets (${days}D)`);
+      
+      // Log purchase dates for debugging
+      assetList.forEach(a => {
+        if (a.purchase_date) {
+          console.log(`  📅 ${a.symbol}: ${a.purchase_date}`);
+        } else {
+          console.log(`  ⚠️ ${a.symbol}: No purchase date (will use entire period)`);
+        }
+      });
 
       const validAssetList = assetList.filter(a => {
         const isValid = a.symbol && a.coin_id && a.amount > 0;
@@ -399,7 +411,7 @@ export default function PortfolioPage() {
     );
   }
 
-  const hasAssets = portfolio?.assets && portfolio.assets.length > 0;
+  const hasAssets = assets && assets.length > 0;
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] pb-8">
@@ -485,6 +497,25 @@ export default function PortfolioPage() {
           {/* Portfolio Value Chart */}
           {hasAssets && (
             <div className="bg-[#141414] border border-neutral-800 rounded-xl p-4 sm:p-6 mb-6">
+              {/* Chart info banner */}
+              {assets.some(a => !a.purchase_date) && (
+                <div className="mb-4 bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3 flex items-start gap-2">
+                  <svg className="w-5 h-5 text-yellow-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <div className="flex-1 text-sm">
+                    <div className="font-medium text-yellow-400 mb-1">Chart Accuracy Notice</div>
+                    <div className="text-yellow-200/80">
+                      {assets.filter(a => !a.purchase_date).length} asset(s) missing purchase dates.
+                      These will be shown as held for the entire period, which may not reflect your actual portfolio history.
+                      <span className="block mt-1 text-xs">
+                        💡 Add purchase dates to your assets for accurate historical charts.
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 gap-3">
                 <div>
                   <h3 className="text-lg font-bold text-white mb-1">Portfolio Value</h3>
@@ -577,7 +608,7 @@ export default function PortfolioPage() {
           {hasAssets ? (
             <div className="bg-[#141414] border border-neutral-800 rounded-xl overflow-hidden">
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[700px]">
+                <table className="w-full min-w-[900px]">
                   <thead className="bg-[#0a0a0a]">
                     <tr>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-neutral-400 uppercase tracking-wider">Asset</th>
@@ -586,6 +617,7 @@ export default function PortfolioPage() {
                       <th className="px-4 py-3 text-right text-xs font-semibold text-neutral-400 uppercase tracking-wider">Value</th>
                       <th className="px-4 py-3 text-right text-xs font-semibold text-neutral-400 uppercase tracking-wider">24h %</th>
                       <th className="px-4 py-3 text-right text-xs font-semibold text-neutral-400 uppercase tracking-wider">P&L</th>
+                      <th className="px-4 py-3 text-center text-xs font-semibold text-neutral-400 uppercase tracking-wider">Purchase</th>
                       <th className="px-4 py-3 text-center text-xs font-semibold text-neutral-400 uppercase tracking-wider">Actions</th>
                     </tr>
                   </thead>
@@ -626,6 +658,24 @@ export default function PortfolioPage() {
                               </div>
                             ) : (
                               <span className="text-xs text-neutral-500">-</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            {rawAssetEntries.length > 0 && rawAssetEntries[0].purchase_date ? (
+                              <div className="text-xs">
+                                <div className="text-emerald-500 font-medium">
+                                  {new Date(rawAssetEntries[0].purchase_date).toLocaleDateString('en-US', {
+                                    month: 'short',
+                                    day: 'numeric',
+                                    year: 'numeric'
+                                  })}
+                                </div>
+                                <div className="text-neutral-500 text-[10px]">
+                                  {Math.floor((Date.now() - new Date(rawAssetEntries[0].purchase_date)) / (1000 * 60 * 60 * 24))}d ago
+                                </div>
+                              </div>
+                            ) : (
+                              <span className="text-xs text-yellow-500">No date</span>
                             )}
                           </td>
                           <td className="px-4 py-3 text-center">
@@ -812,7 +862,10 @@ export default function PortfolioPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-neutral-300 mb-1">Purchase Date (Optional)</label>
+                  <label className="block text-sm font-medium text-neutral-300 mb-1">
+                    Purchase Date (Optional) 
+                    <span className="ml-2 text-xs text-emerald-400">💡 Required for accurate charts</span>
+                  </label>
                   <input
                     type="date"
                     value={formData.purchase_date}

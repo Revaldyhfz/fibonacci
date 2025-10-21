@@ -350,23 +350,15 @@ async def fetch_coin_history_smart(asset: Asset, days: int):
 
 @app.post("/portfolio/history")
 async def get_portfolio_history(assets: List[Asset], days: int = 7):
-    """Get historical portfolio value using Binance + CoinGecko"""
+    """Get historical portfolio value using Binance + CoinGecko with purchase date awareness"""
     
     print(f"📈 History: {len(assets)} assets, {days} days")
     
     if not assets:
         return {'history': [], 'message': 'No assets provided'}
     
-    # Cache key
-    asset_ids = sorted([a.coin_id for a in assets])
-    cache_key = f"history_{'-'.join(asset_ids)}_{days}"
-    
-    # Check cache
-    if cache_key in history_cache:
-        cached = history_cache[cache_key]
-        if (datetime.now() - cached['timestamp']).seconds < HISTORY_CACHE_DURATION:
-            print(f"✓ Cache hit: {len(cached['data']['history'])} points")
-            return cached['data']
+    # Cache disabled for purchase-date-aware calculations
+    # (Each request may have different purchase dates for same assets)
     
     # Fetch all histories concurrently
     tasks = [fetch_coin_history_smart(asset, days) for asset in assets]
@@ -380,6 +372,26 @@ async def get_portfolio_history(assets: List[Asset], days: int = 7):
             'days': days
         }
     
+    # Map asset purchase dates (in milliseconds)
+    asset_purchase_times = {}
+    assets_without_dates = []
+    
+    for i, asset in enumerate(assets):
+        result = results[i]
+        if result and result['prices']:
+            if asset.purchase_date:
+                # Convert purchase_date to timestamp in milliseconds
+                purchase_ts = int(asset.purchase_date.timestamp() * 1000)
+                asset_purchase_times[result['coin_id']] = purchase_ts
+                print(f"  📅 {asset.symbol}: purchased on {asset.purchase_date.strftime('%Y-%m-%d')}")
+            else:
+                # No purchase date means "owned for entire period"
+                asset_purchase_times[result['coin_id']] = 0  # Beginning of time
+                assets_without_dates.append(asset.symbol)
+    
+    if assets_without_dates:
+        print(f"  ⚠️ No purchase dates for: {', '.join(assets_without_dates)} (assuming held entire period)")
+    
     # Aggregate timestamps
     all_timestamps = set()
     for asset_hist in history_data:
@@ -390,9 +402,9 @@ async def get_portfolio_history(assets: List[Asset], days: int = 7):
         return {'history': [], 'error': 'No price points', 'days': days}
     
     sorted_timestamps = sorted(list(all_timestamps))
-    print(f"  ⚙️ Aggregating {len(sorted_timestamps)} timestamps...")
+    print(f"  ⚙️ Aggregating {len(sorted_timestamps)} timestamps with purchase date filtering...")
     
-    # Build portfolio history with forward-fill
+    # Build portfolio history with forward-fill AND purchase date filtering
     portfolio_history = []
     latest_prices = {a['coin_id']: None for a in history_data}
     asset_iters = {
@@ -409,12 +421,18 @@ async def get_portfolio_history(assets: List[Asset], days: int = 7):
         for asset_hist in history_data:
             aid = asset_hist['coin_id']
             
+            # CRITICAL: Only include this asset if it was owned at this timestamp
+            purchase_time = asset_purchase_times.get(aid, 0)
+            if ts < purchase_time:
+                # Asset wasn't owned yet at this point in time
+                continue
+            
             # Update latest price
             while current_points[aid] and current_points[aid][0] <= ts:
                 latest_prices[aid] = current_points[aid][1]
                 current_points[aid] = next(asset_iters[aid], None)
             
-            # Calculate value
+            # Calculate value (only if asset was owned at this time)
             if latest_prices[aid] is not None:
                 total_value += latest_prices[aid] * asset_hist['amount']
         
@@ -429,16 +447,11 @@ async def get_portfolio_history(assets: List[Asset], days: int = 7):
         'history': portfolio_history,
         'days': days,
         'data_points': len(portfolio_history),
-        'sources': list(set([a['source'] for a in history_data]))
+        'sources': list(set([a['source'] for a in history_data])),
+        'assets_without_purchase_date': assets_without_dates
     }
     
-    # Cache
-    history_cache[cache_key] = {
-        'data': result,
-        'timestamp': datetime.now()
-    }
-    
-    print(f"✅ {len(portfolio_history)} points aggregated")
+    print(f"✅ {len(portfolio_history)} points aggregated with purchase date awareness")
     
     return result
 
