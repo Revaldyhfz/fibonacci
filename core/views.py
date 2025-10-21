@@ -94,6 +94,7 @@ class CryptoAssetViewSet(viewsets.ModelViewSet):
             {
                 'symbol': asset.symbol,
                 'amount': float(asset.amount),
+                'coin_id': asset.coin_id,
                 'purchase_price': float(asset.purchase_price) if asset.purchase_price else None,
                 'purchase_date': asset.purchase_date.isoformat() if asset.purchase_date else None,
                 'notes': asset.notes
