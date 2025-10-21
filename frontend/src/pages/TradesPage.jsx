@@ -221,6 +221,7 @@ export default function TradesPage() {
                 <Link to="/dashboard" className="text-sm text-neutral-400 hover:text-white transition-colors">Dashboard</Link>
                 <Link to="/trades" className="text-sm font-medium text-white">Trades</Link>
                 <Link to="/analytics" className="text-sm text-neutral-400 hover:text-white transition-colors">Analytics</Link>
+                <Link to="/portfolio" className="text-sm text-neutral-400 hover:text-white transition-colors">Portfolio</Link>
               </nav>
             </div>
             <div className="flex items-center gap-4">

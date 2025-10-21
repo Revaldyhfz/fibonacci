@@ -204,6 +204,8 @@ export default function AnalyticsPage() {
                 <Link to="/dashboard" className="text-sm text-neutral-400 hover:text-white transition-colors">Dashboard</Link>
                 <Link to="/trades" className="text-sm text-neutral-400 hover:text-white transition-colors">Trades</Link>
                 <Link to="/analytics" className="text-sm font-medium text-white">Analytics</Link>
+                <Link to="/portfolio" className="text-sm text-neutral-400 hover:text-white transition-colors">Portfolio</Link>
+
               </nav>
             </div>
             <div className="flex items-center gap-4">
