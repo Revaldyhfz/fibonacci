@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import axios from "axios";
 
 export default function PortfolioPage() {
@@ -345,8 +345,8 @@ export default function PortfolioPage() {
                   </div>
                 </div>
               ) : historyData.length > 0 ? (
-                <ResponsiveContainer width="100%" height={320}>
-                  <LineChart data={historyData}>
+                <div style={{ width: '100%', height: 320 }}>
+                  <LineChart width={800} height={320} data={historyData}>
                     <defs>
                       <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
@@ -374,7 +374,7 @@ export default function PortfolioPage() {
                       fill="url(#colorValue)"
                     />
                   </LineChart>
-                </ResponsiveContainer>
+                </div>
               ) : (
                 <div className="h-80 flex items-center justify-center">
                   <div className="text-center text-neutral-400">
