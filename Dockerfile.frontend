@@ -4,15 +4,17 @@ FROM --platform=linux/amd64 node:20-slim AS builder
 
 WORKDIR /app
 
-# Copy BOTH package.json files first
+# Copy root package.json and install root dependencies (Tailwind)
 COPY package.json ./
-COPY frontend/package.json ./frontend/
+RUN npm install
 
-# Install ALL dependencies from the root level
-# This should pick up both root devDependencies and frontend dependencies
+# Copy frontend package.json and install frontend dependencies
+COPY frontend/package.json ./frontend/
+WORKDIR /app/frontend
 RUN npm install
 
 # Copy the rest of the frontend source code
+WORKDIR /app
 COPY frontend/ ./frontend/
 
 # Set workdir to frontend and run build
@@ -23,11 +25,9 @@ RUN npm run build
 FROM nginx:1.25-alpine
 
 # Copy built assets from builder stage
-# Adjust path since build ran inside /app/frontend
 COPY --from=builder /app/frontend/dist /usr/share/nginx/html
 
 # Copy custom Nginx configuration
-# Ensure nginx.conf is at the root of the build context
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 # Expose port 80

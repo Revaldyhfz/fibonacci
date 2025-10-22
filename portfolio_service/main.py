@@ -1,4 +1,5 @@
 # portfolio_service/main.py - BINANCE PRIMARY with CoinGecko Fallback
+import os
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
