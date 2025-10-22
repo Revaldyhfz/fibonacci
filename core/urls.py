@@ -8,5 +8,8 @@ router.register(r'trades', TradeViewSet, basename='trade')
 router.register(r'crypto-assets', CryptoAssetViewSet, basename='crypto-asset')
 
 urlpatterns = [
+    path('health/', health_check, name='health'),
+    path('ready/', readiness_check, name='readiness'),
+    path('live/', liveness_check, name='liveness'),
     path('', include(router.urls)),
 ]

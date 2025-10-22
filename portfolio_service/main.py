@@ -9,15 +9,26 @@ import asyncio
 
 app = FastAPI(title="Crypto Portfolio Service (Binance)")
 
+@app.get("/health")
+def health_check():
+    return {"status": "healthy", "service": "portfolio-service"}
+
+@app.get("/ready")
+def readiness_check():
+    return {"status": "ready"}
+
+@app.get("/live")
+def liveness_check():
+    return {"status": "alive", "service": "portfolio-service"}
+
+ALLOWED_ORIGINS = os.getenv('CORS_ORIGINS', 'http://localhost:5173').split(',')
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", 
-                   "http://localhost:8000", "http://127.0.0.1:8000"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 # Caching
 price_cache = {}
 history_cache = {}

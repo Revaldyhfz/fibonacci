@@ -1,3 +1,4 @@
+# fibonacci_project/urls.py - PATCHED with Environment Variables
 from django.contrib import admin
 from django.urls import path, include
 from rest_framework_simplejwt.views import (
@@ -5,14 +6,19 @@ from rest_framework_simplejwt.views import (
     TokenRefreshView,
 )
 from django.http import HttpResponse, JsonResponse
-from django.views.decorators.csrf import csrf_exempt  # ADD THIS
+from django.views.decorators.csrf import csrf_exempt
 import requests
 import json
+import os
+
+# Environment-based service URLs (Kubernetes-ready)
+ANALYTICS_SERVICE_URL = os.getenv('ANALYTICS_SERVICE_URL', 'http://127.0.0.1:8001')
+PORTFOLIO_SERVICE_URL = os.getenv('PORTFOLIO_SERVICE_URL', 'http://127.0.0.1:8002')
 
 def analytics_proxy(request, path):
     """Proxy requests to the analytics microservice"""
     try:
-        url = f"http://127.0.0.1:8001/{path}"
+        url = f"{ANALYTICS_SERVICE_URL}/{path}"
         
         headers = {}
         if 'Authorization' in request.headers:
@@ -28,11 +34,11 @@ def analytics_proxy(request, path):
     except Exception as e:
         return JsonResponse({"error": f"Analytics service unavailable: {str(e)}"}, status=503)
 
-@csrf_exempt  # ADD THIS DECORATOR - CRITICAL FIX
+@csrf_exempt
 def portfolio_proxy(request, path):
     """Proxy requests to the portfolio microservice"""
     try:
-        url = f"http://127.0.0.1:8002/{path}"
+        url = f"{PORTFOLIO_SERVICE_URL}/{path}"
         
         query_params = request.GET.dict()
         

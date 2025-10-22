@@ -12,6 +12,27 @@ load_dotenv(dotenv_path="../.env")
 
 app = FastAPI(title="Fibonacci Analytics Service")
 
+@app.get("/health")
+def health_check():
+    return {"status": "healthy", "service": "analytics-service"}
+
+@app.get("/ready")
+def readiness_check():
+    try:
+        conn = psycopg2.connect(
+            dbname=DB_NAME, user=DB_USER, password=DB_PASSWORD,
+            host=DB_HOST, port=DB_PORT
+        )
+        conn.close()
+        return {"status": "ready", "database": "connected"}
+    except Exception as e:
+        from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=503, content={"status": "not ready", "error": str(e)})
+
+@app.get("/live")
+def liveness_check():
+    return {"status": "alive", "service": "analytics-service"}
+
 DB_NAME = os.getenv("DB_NAME", "fibonacci")
 DB_USER = os.getenv("DB_USER", "postgres")
 DB_PASSWORD = os.getenv("DB_PASSWORD", "password")

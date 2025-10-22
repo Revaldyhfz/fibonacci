@@ -1,0 +1,116 @@
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: fibonacci-postgres
+    environment:
+      POSTGRES_DB: ${DB_NAME:-fibonacci}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-password}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - fibonacci-network
+
+  # Django Main Service
+  main-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.main
+    container_name: fibonacci-main
+    environment:
+      DB_NAME: ${DB_NAME:-fibonacci}
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-password}
+      DB_HOST: postgres
+      DB_PORT: 5432
+      SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-production}
+      DEBUG: ${DEBUG:-False}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1,main-service}
+      ANALYTICS_SERVICE_URL: http://analytics-service:8001
+      PORTFOLIO_SERVICE_URL: http://portfolio-service:8002
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost,http://localhost:5173,http://127.0.0.1:5173}
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      analytics-service:
+        condition: service_healthy
+      portfolio-service:
+        condition: service_healthy
+    networks:
+      - fibonacci-network
+    restart: unless-stopped
+
+  # Analytics FastAPI Service
+  analytics-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.analytics
+    container_name: fibonacci-analytics
+    environment:
+      DB_NAME: ${DB_NAME:-fibonacci}
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-password}
+      DB_HOST: postgres
+      DB_PORT: 5432
+    ports:
+      - "8001:8001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - fibonacci-network
+    restart: unless-stopped
+
+  # Portfolio FastAPI Service
+  portfolio-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.portfolio
+    container_name: fibonacci-portfolio
+    environment:
+      DB_NAME: ${DB_NAME:-fibonacci}
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-password}
+      DB_HOST: postgres
+      DB_PORT: 5432
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost,http://localhost:5173,http://127.0.0.1:5173,http://localhost:8000}
+      COINGECKO_API_KEY: ${COINGECKO_API_KEY:-}
+    ports:
+      - "8002:8002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - fibonacci-network
+    restart: unless-stopped
+
+  # React Frontend with Nginx
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: fibonacci-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - main-service
+    networks:
+      - fibonacci-network
+    restart: unless-stopped
+
+networks:
+  fibonacci-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
