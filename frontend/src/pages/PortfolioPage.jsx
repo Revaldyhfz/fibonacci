@@ -634,7 +634,7 @@ export default function PortfolioPage() {
                               </div>
                             </div>
                           </td>
-                          <td className="px-4 py-3 text-right text-sm text-white">{asset.total_amount?.toFixed(6)}</td>
+                         <td className="px-4 py-3 text-right text-sm text-white">{(asset.total_amount || asset.amount)?.toFixed(6) || 'N/A'}</td>
                           <td className="px-4 py-3 text-right text-sm text-white">
                             ${asset.current_price?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 })}
                           </td>
