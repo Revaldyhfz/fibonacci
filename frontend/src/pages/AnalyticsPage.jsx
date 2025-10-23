@@ -33,10 +33,10 @@ export default function AnalyticsPage() {
       const filterParam = `?time_filter=${timeFilter}`;
       
       const [overallRes, sessionsRes, symbolsRes, hourlyRes] = await Promise.all([
-        fetch(`http://127.0.0.1:8000/analytics/stats/overall${filterParam}`, { headers }),
-        fetch(`http://127.0.0.1:8000/analytics/stats/session${filterParam}`, { headers }),
-        fetch(`http://127.0.0.1:8000/analytics/stats/symbol${filterParam}`, { headers }),
-        fetch(`http://127.0.0.1:8000/analytics/stats/hourly${filterParam}`, { headers })
+        fetch(`/analytics/stats/overall${filterParam}`, { headers }),
+        fetch(`/analytics/stats/session${filterParam}`, { headers }),
+        fetch(`/analytics/stats/symbol${filterParam}`, { headers }),
+        fetch(`/analytics/stats/hourly${filterParam}`, { headers })
       ]);
 
       if (!overallRes.ok || !sessionsRes.ok || !symbolsRes.ok || !hourlyRes.ok) {

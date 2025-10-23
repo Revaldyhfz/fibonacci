@@ -4,7 +4,9 @@ from rest_framework.response import Response
 from .models import CryptoAsset, Strategy, Trade
 from .serializers import CryptoAssetSerializer, StrategySerializer, TradeSerializer
 import requests
+import os
 
+PORTFOLIO_SERVICE_URL = os.getenv('PORTFOLIO_SERVICE_URL', 'http://portfolio-service:8002')
 
 
 
@@ -146,7 +148,7 @@ class CryptoAssetViewSet(viewsets.ModelViewSet):
         # Call portfolio microservice
         try:
             response = requests.post(
-                'http://127.0.0.1:8002/portfolio/calculate',
+                f'{PORTFOLIO_SERVICE_URL}/portfolio/calculate',
                 json=asset_list,
                 timeout=15
             )

@@ -19,7 +19,7 @@ export default function Dashboard() {
   const fetchStats = async () => {
     try {
       const tokens = JSON.parse(localStorage.getItem("tokens"));
-      const res = await fetch("http://127.0.0.1:8000/api/trades/stats/", {
+      const res = await fetch("/api/trades/stats/", {
         headers: { Authorization: `Bearer ${tokens.access}` },
       });
       const data = await res.json();

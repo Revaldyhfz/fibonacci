@@ -12,8 +12,8 @@ import json
 import os
 
 # Environment-based service URLs (Kubernetes-ready)
-ANALYTICS_SERVICE_URL = os.getenv('ANALYTICS_SERVICE_URL', 'http://127.0.0.1:8001')
-PORTFOLIO_SERVICE_URL = os.getenv('PORTFOLIO_SERVICE_URL', 'http://127.0.0.1:8002')
+ANALYTICS_SERVICE_URL = os.getenv('ANALYTICS_SERVICE_URL', 'http://analytics-service:8001')
+PORTFOLIO_SERVICE_URL = os.getenv('PORTFOLIO_SERVICE_URL', 'http://portfolio-service:8002')
 
 def analytics_proxy(request, path):
     """Proxy requests to the analytics microservice"""

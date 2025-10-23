@@ -34,7 +34,7 @@ export default function TradesPage() {
   const fetchTrades = async () => {
     try {
       const tokens = JSON.parse(localStorage.getItem("tokens"));
-      const res = await fetch("http://127.0.0.1:8000/api/trades/", {
+      const res = await fetch("/api/trades/", {
         headers: { Authorization: `Bearer ${tokens.access}` },
       });
       const data = await res.json();
@@ -49,7 +49,7 @@ export default function TradesPage() {
   const fetchStrategies = async () => {
     try {
       const tokens = JSON.parse(localStorage.getItem("tokens"));
-      const res = await fetch("http://127.0.0.1:8000/api/strategies/", {
+      const res = await fetch("/api/strategies/", {
         headers: { Authorization: `Bearer ${tokens.access}` },
       });
       const data = await res.json();
@@ -68,7 +68,7 @@ export default function TradesPage() {
         trade_date: formData.trade_date || `${selectedDay}T12:00:00`
       };
       
-      await fetch("http://127.0.0.1:8000/api/trades/", {
+      await fetch("/api/trades/", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -104,7 +104,7 @@ export default function TradesPage() {
     if (!window.confirm("Are you sure you want to delete this trade?")) return;
     try {
       const tokens = JSON.parse(localStorage.getItem("tokens"));
-      await fetch(`http://127.0.0.1:8000/api/trades/${tradeId}/`, {
+      await fetch(`/api/trades/${tradeId}/`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${tokens.access}` },
       });

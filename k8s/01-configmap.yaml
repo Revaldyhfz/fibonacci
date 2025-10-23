@@ -18,7 +18,7 @@ data:
   
   # Django settings
   DEBUG: "False"
-  ALLOWED_HOSTS: "localhost,127.0.0.1,main-service,fibonacci-main"
+  ALLOWED_HOSTS: "*"
   
   # CORS settings
   CORS_ORIGINS: "http://localhost,http://localhost:80,http://127.0.0.1"

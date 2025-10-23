@@ -147,10 +147,10 @@ export default function PortfolioPage() {
       if (!tokens?.access) throw new Error("Authentication token not found.");
       const headers = { Authorization: `Bearer ${tokens.access}` };
 
-      const assetsRes = await axios.get("http://127.0.0.1:8000/api/crypto-assets/", { headers });
+      const assetsRes = await axios.get("/api/crypto-assets/", { headers });
       setAssets(assetsRes.data || []);
 
-      const portfolioRes = await axios.get("http://127.0.0.1:8000/api/crypto-assets/portfolio_summary/", { headers });
+      const portfolioRes = await axios.get("/api/crypto-assets/portfolio_summary/", { headers });
       setPortfolio(portfolioRes.data);
 
     } catch (error) {
@@ -217,7 +217,7 @@ export default function PortfolioPage() {
       const tokens = JSON.parse(localStorage.getItem("tokens"));
       if (!tokens?.access) throw new Error("Authentication token required.");
       
-      const historyUrl = `http://127.0.0.1:8000/portfolio/portfolio/history?days=${days}`;
+      const historyUrl = `/portfolio/portfolio/history?days=${days}`;
 
       console.log(`🌐 POST ${historyUrl}`);
       console.log(`📦 Sending ${validAssetList.length} assets:`, validAssetList);
@@ -304,7 +304,7 @@ export default function PortfolioPage() {
       const tokens = JSON.parse(localStorage.getItem("tokens"));
       if (!tokens?.access) throw new Error("Auth token needed for search.");
       const headers = { Authorization: `Bearer ${tokens.access}` };
-      const searchUrl = `http://127.0.0.1:8000/portfolio/search/${query}`;
+      const searchUrl = `/portfolio/search/${query}`;
       const res = await axios.get(searchUrl, { headers });
       console.log("🔍 Search results:", res.data);
       setSearchResults(res.data.results || []);
@@ -339,7 +339,7 @@ export default function PortfolioPage() {
       if (!tokens?.access) throw new Error("Auth token needed to add asset.");
       const headers = { Authorization: `Bearer ${tokens.access}` };
 
-      await axios.post("http://127.0.0.1:8000/api/crypto-assets/", dataToSubmit, { headers });
+      await axios.post("/api/crypto-assets/", dataToSubmit, { headers });
 
       setFormData({ symbol: "", coin_id: "", amount: "", purchase_price: "", purchase_date: "", notes: "" });
       setSearchResults([]);
@@ -363,7 +363,7 @@ export default function PortfolioPage() {
       const headers = { Authorization: `Bearer ${tokens.access}` };
 
       await axios.delete(
-        `http://127.0.0.1:8000/api/crypto-assets/${assetIdToDelete}/`,
+        `/api/crypto-assets/${assetIdToDelete}/`,
         { headers: headers }
       );
       
