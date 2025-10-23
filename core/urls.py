@@ -1,6 +1,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import CryptoAssetViewSet, StrategyViewSet, TradeViewSet
+from .health import health_check, readiness_check, liveness_check
 
 router = DefaultRouter()
 router.register(r'strategies', StrategyViewSet, basename='strategy')

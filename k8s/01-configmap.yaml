@@ -1,0 +1,24 @@
+# k8s/01-configmap.yaml
+# ConfigMap for shared configuration across services
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fibonacci-config
+  namespace: fibonacci
+data:
+  # Database configuration
+  DB_NAME: "fibonacci"
+  DB_USER: "postgres"
+  DB_HOST: "postgres-service"
+  DB_PORT: "5432"
+  
+  # Service URLs (internal cluster communication)
+  ANALYTICS_SERVICE_URL: "http://analytics-service:8001"
+  PORTFOLIO_SERVICE_URL: "http://portfolio-service:8002"
+  
+  # Django settings
+  DEBUG: "False"
+  ALLOWED_HOSTS: "localhost,127.0.0.1,main-service,fibonacci-main"
+  
+  # CORS settings
+  CORS_ORIGINS: "http://localhost,http://localhost:80,http://127.0.0.1"

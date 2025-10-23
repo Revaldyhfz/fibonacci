@@ -1,0 +1,9 @@
+# k8s/00-namespace.yaml
+# Namespace for the Fibonacci application
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: fibonacci
+  labels:
+    name: fibonacci
+    app: fibonacci-microservices

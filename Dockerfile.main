@@ -24,9 +24,6 @@ COPY fibonacci_project/ /app/fibonacci_project/
 COPY core/ /app/core/
 COPY manage.py /app/
 
-# Create directory for static files
-RUN mkdir -p /app/staticfiles
-
 # Expose port
 EXPOSE 8000
 
@@ -34,5 +31,5 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD python -c "import requests; requests.get('http://localhost:8000/api/health/', timeout=5)" || exit 1
 
-# Run migrations and start server
-CMD ["sh", "-c", "python manage.py migrate --noinput && python manage.py collectstatic --noinput && gunicorn fibonacci_project.wsgi:application --bind 0.0.0.0:8000 --workers 3 --timeout 120"]
+# Run migrations and start server (skip collectstatic)
+CMD ["sh", "-c", "python manage.py migrate --noinput && gunicorn fibonacci_project.wsgi:application --bind 0.0.0.0:8000 --workers 3 --timeout 120"]
