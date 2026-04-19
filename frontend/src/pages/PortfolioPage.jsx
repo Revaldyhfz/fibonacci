@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import axios from "axios";
+import Header from "../components/layout/Header";
+import { useToast } from "../context/ToastContext";
 
 // Debounce hook
 function useDebounce(value, delay) {
@@ -20,8 +20,7 @@ function useDebounce(value, delay) {
 }
 
 export default function PortfolioPage() {
-  const { logout, user } = useAuth();
-  const nav = useNavigate();
+  const toast = useToast();
   const [portfolio, setPortfolio] = useState(null);
   const [assets, setAssets] = useState([]);
   const [historyData, setHistoryData] = useState([]);
@@ -30,6 +29,7 @@ export default function PortfolioPage() {
   const [chartLoading, setChartLoading] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showChartModal, setShowChartModal] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const [selectedCoin, setSelectedCoin] = useState(null);
   const [searchResults, setSearchResults] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -156,9 +156,13 @@ export default function PortfolioPage() {
     } catch (error) {
       console.error("Failed to fetch portfolio:", error);
       if (error.response?.status === 401) {
-        logout();
-        nav("/");
+        // Token expired / unauthorized — let the app-level guard redirect.
+        localStorage.removeItem("tokens");
+        localStorage.removeItem("user");
+        window.location.href = "/";
+        return;
       }
+      toast.error("Failed to load portfolio");
       setPortfolio(null);
       setAssets([]);
     } finally {
@@ -319,11 +323,11 @@ export default function PortfolioPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.coin_id || !formData.symbol) {
-      alert("Please search and select a cryptocurrency or enter manually.");
+      toast.warning("Search and select a cryptocurrency first.");
       return;
     }
     if (!formData.amount || parseFloat(formData.amount) <= 0) {
-      alert("Please enter a valid positive amount.");
+      toast.warning("Enter a positive amount.");
       return;
     }
 
@@ -344,35 +348,37 @@ export default function PortfolioPage() {
       setFormData({ symbol: "", coin_id: "", amount: "", purchase_price: "", purchase_date: "", notes: "" });
       setSearchResults([]);
       setShowAddModal(false);
-      
+
       cacheRef.current = {};
-      
+
+      toast.success(`${formData.symbol.toUpperCase()} added to portfolio`);
       await fetchPortfolio();
     } catch (error) {
       console.error("Failed to add asset:", error.response?.data || error.message);
-      alert("Failed to add asset. See console for details.");
+      toast.error("Failed to add asset.");
     }
   };
 
   const handleDelete = async (assetIdToDelete) => {
-    if (!window.confirm("Are you sure you want to delete this asset?")) return;
+    setDeleteTarget(assetIdToDelete);
+  };
 
+  const confirmDeleteAsset = async () => {
+    if (deleteTarget === null) return;
     try {
       const tokens = JSON.parse(localStorage.getItem("tokens"));
       if (!tokens?.access) throw new Error("Auth token needed to delete asset.");
       const headers = { Authorization: `Bearer ${tokens.access}` };
 
-      await axios.delete(
-        `/api/crypto-assets/${assetIdToDelete}/`,
-        { headers: headers }
-      );
-      
+      await axios.delete(`/api/crypto-assets/${deleteTarget}/`, { headers });
+
       cacheRef.current = {};
-      
+      toast.success("Asset removed");
+      setDeleteTarget(null);
       await fetchPortfolio();
     } catch (error) {
       console.error("Failed to delete asset:", error.response?.data || error.message);
-      alert("Failed to delete asset. See console for details.");
+      toast.error("Failed to delete asset.");
     }
   };
 
@@ -415,33 +421,7 @@ export default function PortfolioPage() {
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] pb-8">
-      {/* Header */}
-      <header className="sticky top-0 z-50 border-b border-neutral-800 bg-[#141414]/95 backdrop-blur-sm shadow-lg">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="flex h-16 items-center justify-between">
-            <div className="flex items-center gap-8">
-              <h1 className="text-xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-                Trading Journal
-              </h1>
-              <nav className="hidden md:flex gap-6">
-                <Link to="/dashboard" className="text-sm text-neutral-400 hover:text-white transition-colors">Dashboard</Link>
-                <Link to="/trades" className="text-sm text-neutral-400 hover:text-white transition-colors">Trades</Link>
-                <Link to="/analytics" className="text-sm text-neutral-400 hover:text-white transition-colors">Analytics</Link>
-                <Link to="/portfolio" className="text-sm font-medium text-white">Portfolio</Link>
-              </nav>
-            </div>
-            <div className="flex items-center gap-4">
-              <div className="text-sm text-neutral-400">
-                <span className="hidden sm:inline">Welcome, </span>
-                <span className="font-medium text-white">{user?.username || 'Trader'}</span>
-              </div>
-              <button onClick={() => { logout(); nav("/"); }} className="text-sm px-3 py-1.5 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-lg transition-colors">
-                Logout
-              </button>
-            </div>
-          </div>
-        </div>
-      </header>
+      <Header />
 
       <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         {/* Page Header */}
@@ -915,6 +895,38 @@ export default function PortfolioPage() {
             </div>
             <div className="flex-grow p-1 sm:p-2 overflow-hidden">
               <div id="tradingview_chart_widget_container" ref={chartContainerRef} className="w-full h-full min-h-[400px]" />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteTarget !== null && (
+        <div
+          className="fixed inset-0 bg-black/80 flex items-center justify-center z-[60] p-4"
+          onClick={() => setDeleteTarget(null)}
+        >
+          <div
+            className="bg-[#141414] border border-neutral-800 rounded-2xl w-full max-w-md p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-bold text-white mb-2">Remove asset?</h3>
+            <p className="text-sm text-neutral-300 mb-6">
+              This permanently removes the asset from your portfolio. This
+              action cannot be undone.
+            </p>
+            <div className="flex items-center justify-end gap-2">
+              <button
+                onClick={() => setDeleteTarget(null)}
+                className="px-4 py-2 text-sm text-neutral-300 hover:text-white hover:bg-neutral-800 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDeleteAsset}
+                className="px-4 py-2 text-sm font-medium bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/40 rounded-lg transition-colors"
+              >
+                Remove
+              </button>
             </div>
           </div>
         </div>

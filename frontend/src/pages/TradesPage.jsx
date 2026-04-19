@@ -1,532 +1,683 @@
-import { useState, useEffect } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import Header from "../components/layout/Header";
+import Card, { Stat } from "../components/ui/Card";
+import Button from "../components/ui/Button";
+import Modal from "../components/ui/Modal";
+import Spinner from "../components/ui/Spinner";
+import { Input, Select, Textarea } from "../components/ui/Input";
+import { useToast } from "../context/ToastContext";
+
+const EMPTY_TRADE = {
+  symbol: "",
+  strategy: "",
+  direction: "LONG",
+  trade_date: "",
+  close_date: "",
+  entry_price: "",
+  exit_price: "",
+  position_size: "",
+  fees: "0",
+  notes: "",
+  tags: "",
+};
+
+const EMPTY_STRATEGY = { name: "", description: "" };
+
+const MONTHS = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+function authedFetch(url, opts = {}) {
+  const tokens = JSON.parse(localStorage.getItem("tokens") || "null");
+  const auth = tokens?.access ? { Authorization: `Bearer ${tokens.access}` } : {};
+  return fetch(url, {
+    ...opts,
+    headers: {
+      "Content-Type": "application/json",
+      ...auth,
+      ...(opts.headers || {}),
+    },
+  });
+}
+
+function formatDayDate(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return d.toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+}
 
 export default function TradesPage() {
-  const { logout, user } = useAuth();
-  const nav = useNavigate();
+  const toast = useToast();
+
   const [trades, setTrades] = useState([]);
   const [strategies, setStrategies] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDay, setSelectedDay] = useState(null);
-  const [showDayModal, setShowDayModal] = useState(false);
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [formData, setFormData] = useState({
-    symbol: "", 
-    strategy: "", 
-    direction: "LONG", 
-    trade_date: "", 
-    close_date: "",
-    entry_price: "", 
-    exit_price: "", 
-    position_size: "", 
-    fees: "0", 
-    notes: "", 
-    tags: ""
-  });
+  const [dayModalOpen, setDayModalOpen] = useState(false);
+  const [addModalOpen, setAddModalOpen] = useState(false);
+  const [strategyModalOpen, setStrategyModalOpen] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [strategySaving, setStrategySaving] = useState(false);
+
+  const [form, setForm] = useState(EMPTY_TRADE);
+  const [strategyForm, setStrategyForm] = useState(EMPTY_STRATEGY);
+
+  const loadTrades = useCallback(async () => {
+    try {
+      const res = await authedFetch("/api/trades/");
+      if (!res.ok) throw new Error("Failed to load trades");
+      setTrades(await res.json());
+    } catch (err) {
+      toast.error(err.message || "Couldn't load trades");
+    }
+  }, [toast]);
+
+  const loadStrategies = useCallback(async () => {
+    try {
+      const res = await authedFetch("/api/strategies/");
+      if (!res.ok) throw new Error("Failed to load strategies");
+      setStrategies(await res.json());
+    } catch (err) {
+      toast.error(err.message || "Couldn't load strategies");
+    }
+  }, [toast]);
 
   useEffect(() => {
-    fetchTrades();
-    fetchStrategies();
-  }, []);
+    Promise.all([loadTrades(), loadStrategies()]).finally(() => setLoading(false));
+  }, [loadTrades, loadStrategies]);
 
-  const fetchTrades = async () => {
-    try {
-      const tokens = JSON.parse(localStorage.getItem("tokens"));
-      const res = await fetch("/api/trades/", {
-        headers: { Authorization: `Bearer ${tokens.access}` },
-      });
-      const data = await res.json();
-      setTrades(data);
-    } catch (error) {
-      console.error("Failed to fetch trades:", error);
-    } finally {
-      setLoading(false);
+  const tradesByDay = useMemo(() => {
+    const map = new Map();
+    for (const trade of trades) {
+      const key = new Date(trade.trade_date).toISOString().split("T")[0];
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(trade);
     }
-  };
+    return map;
+  }, [trades]);
 
-  const fetchStrategies = async () => {
-    try {
-      const tokens = JSON.parse(localStorage.getItem("tokens"));
-      const res = await fetch("/api/strategies/", {
-        headers: { Authorization: `Bearer ${tokens.access}` },
-      });
-      const data = await res.json();
-      setStrategies(data);
-    } catch (error) {
-      console.error("Failed to fetch strategies:", error);
-    }
+  const monthStats = useMemo(() => {
+    const ym = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, "0")}`;
+    const entries = trades.filter((t) =>
+      (t.trade_date || "").startsWith(ym)
+    );
+    const pnl = entries.reduce((s, t) => s + parseFloat(t.pnl || 0), 0);
+    const wins = entries.filter((t) => parseFloat(t.pnl || 0) > 0).length;
+    const losses = entries.filter((t) => parseFloat(t.pnl || 0) < 0).length;
+    return { total: entries.length, pnl, wins, losses };
+  }, [trades, currentDate]);
+
+  const handleChange = (e) =>
+    setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
+
+  const openAddModal = (dayKey = null) => {
+    setSelectedDay(dayKey);
+    setForm({ ...EMPTY_TRADE, trade_date: dayKey ? `${dayKey}T12:00` : "" });
+    setAddModalOpen(true);
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setSubmitting(true);
     try {
-      const tokens = JSON.parse(localStorage.getItem("tokens"));
-      const dataToSubmit = {
-        ...formData,
-        trade_date: formData.trade_date || `${selectedDay}T12:00:00`
+      const payload = {
+        ...form,
+        strategy: form.strategy === "" ? null : form.strategy,
+        close_date: form.close_date || null,
+        exit_price: form.exit_price || null,
+        trade_date: form.trade_date || (selectedDay ? `${selectedDay}T12:00:00` : ""),
       };
-      
-      await fetch("/api/trades/", {
+      const res = await authedFetch("/api/trades/", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${tokens.access}`,
-        },
-        body: JSON.stringify(dataToSubmit),
+        body: JSON.stringify(payload),
       });
-      setShowAddModal(false);
-      setFormData({
-        symbol: "", 
-        strategy: "", 
-        direction: "LONG", 
-        trade_date: "", 
-        close_date: "",
-        entry_price: "", 
-        exit_price: "", 
-        position_size: "", 
-        fees: "0", 
-        notes: "", 
-        tags: ""
-      });
-      await fetchTrades();
-    } catch (error) {
-      console.error("Failed to add trade:", error);
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        const msg = typeof data === "object"
+          ? Object.values(data).flat()[0] || "Failed to save trade"
+          : "Failed to save trade";
+        throw new Error(msg);
+      }
+      toast.success("Trade added");
+      setAddModalOpen(false);
+      setForm(EMPTY_TRADE);
+      await loadTrades();
+    } catch (err) {
+      toast.error(err.message || "Couldn't add trade");
+    } finally {
+      setSubmitting(false);
     }
   };
 
-  const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
-  };
-
-  const handleDeleteTrade = async (tradeId) => {
-    if (!window.confirm("Are you sure you want to delete this trade?")) return;
+  const handleDelete = async () => {
+    if (!confirmDelete) return;
     try {
-      const tokens = JSON.parse(localStorage.getItem("tokens"));
-      await fetch(`/api/trades/${tradeId}/`, {
+      const res = await authedFetch(`/api/trades/${confirmDelete}/`, {
         method: "DELETE",
-        headers: { Authorization: `Bearer ${tokens.access}` },
       });
-      await fetchTrades();
-    } catch (error) {
-      console.error("Failed to delete trade:", error);
+      if (!res.ok && res.status !== 204) throw new Error("Delete failed");
+      toast.success("Trade deleted");
+      setConfirmDelete(null);
+      await loadTrades();
+    } catch (err) {
+      toast.error(err.message || "Delete failed");
     }
   };
 
-  const getDaysInMonth = (date) => {
-    const year = date.getFullYear();
-    const month = date.getMonth();
-    return new Date(year, month + 1, 0).getDate();
-  };
-
-  const getFirstDayOfMonth = (date) => {
-    return new Date(date.getFullYear(), date.getMonth(), 1).getDay();
-  };
-
-  const getTradesForDay = (day) => {
-    const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    return trades.filter(trade => {
-      const tradeDate = new Date(trade.trade_date).toISOString().split('T')[0];
-      return tradeDate === dateStr;
-    });
-  };
-
-  const getDayPnL = (dayTrades) => {
-    return dayTrades.reduce((sum, trade) => sum + parseFloat(trade.pnl || 0), 0);
-  };
-
-  const getDayColor = (pnl) => {
-    if (pnl > 0) return 'bg-emerald-500/10 border-emerald-500/30';
-    if (pnl < 0) return 'bg-red-500/10 border-red-500/30';
-    return 'bg-[#141414] border-neutral-800';
-  };
-
-  const generateCalendar = () => {
-    const daysInMonth = getDaysInMonth(currentDate);
-    const firstDay = getFirstDayOfMonth(currentDate);
-    const days = [];
-
-    for (let i = 0; i < firstDay; i++) {
-      days.push(<div key={`empty-${i}`} className="aspect-square bg-[#0a0a0a]"></div>);
+  const handleStrategySubmit = async (e) => {
+    e.preventDefault();
+    setStrategySaving(true);
+    try {
+      const res = await authedFetch("/api/strategies/", {
+        method: "POST",
+        body: JSON.stringify(strategyForm),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        const msg = typeof data === "object"
+          ? Object.values(data).flat()[0] || "Failed to save strategy"
+          : "Failed to save strategy";
+        throw new Error(msg);
+      }
+      const created = await res.json();
+      toast.success("Strategy created");
+      setStrategyModalOpen(false);
+      setStrategyForm(EMPTY_STRATEGY);
+      await loadStrategies();
+      // Pre-select the newly created strategy if the trade modal is open.
+      if (addModalOpen && created?.id) {
+        setForm((f) => ({ ...f, strategy: String(created.id) }));
+      }
+    } catch (err) {
+      toast.error(err.message || "Couldn't save strategy");
+    } finally {
+      setStrategySaving(false);
     }
-
-    for (let day = 1; day <= daysInMonth; day++) {
-      const dayTrades = getTradesForDay(day);
-      const pnl = getDayPnL(dayTrades);
-      const isToday = new Date().getDate() === day && 
-                      new Date().getMonth() === currentDate.getMonth() &&
-                      new Date().getFullYear() === currentDate.getFullYear();
-
-      days.push(
-        <div
-          key={day}
-          onClick={() => {
-            const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-            setSelectedDay(dateStr);
-            setShowDayModal(true);
-          }}
-          className={`aspect-square ${getDayColor(pnl)} border rounded-lg p-1.5 cursor-pointer hover:border-neutral-600 transition-all ${isToday ? 'ring-2 ring-blue-500' : ''} flex flex-col`}
-        >
-          <div className="text-xs font-semibold text-white mb-0.5">{day}</div>
-          {dayTrades.length > 0 && (
-            <>
-              <div className="text-[10px] text-neutral-400 truncate">
-                {dayTrades.length} trade{dayTrades.length !== 1 ? 's' : ''}
-              </div>
-              <div className={`text-xs font-bold mt-auto truncate ${pnl >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
-                ${pnl.toFixed(0)}
-              </div>
-            </>
-          )}
-        </div>
-      );
-    }
-
-    return days;
   };
 
-  const prevMonth = () => {
-    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1));
-  };
+  const daysInMonth = new Date(
+    currentDate.getFullYear(),
+    currentDate.getMonth() + 1,
+    0
+  ).getDate();
+  const firstDay = new Date(
+    currentDate.getFullYear(),
+    currentDate.getMonth(),
+    1
+  ).getDay();
 
-  const nextMonth = () => {
-    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1));
-  };
-
-  const monthNames = ["January", "February", "March", "April", "May", "June",
-    "July", "August", "September", "October", "November", "December"];
-
-  const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  const dayNamesShort = ["S", "M", "T", "W", "T", "F", "S"];
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
-        <div className="text-neutral-400">Loading...</div>
-      </div>
+  const calendarCells = [];
+  for (let i = 0; i < firstDay; i++) {
+    calendarCells.push(<div key={`empty-${i}`} className="aspect-square" />);
+  }
+  for (let day = 1; day <= daysInMonth; day++) {
+    const dateKey = `${currentDate.getFullYear()}-${String(
+      currentDate.getMonth() + 1
+    ).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    const dayTrades = tradesByDay.get(dateKey) || [];
+    const pnl = dayTrades.reduce((s, t) => s + parseFloat(t.pnl || 0), 0);
+    const today = new Date();
+    const isToday =
+      today.getDate() === day &&
+      today.getMonth() === currentDate.getMonth() &&
+      today.getFullYear() === currentDate.getFullYear();
+    const tone =
+      pnl > 0
+        ? "bg-emerald-500/10 border-emerald-500/40"
+        : pnl < 0
+          ? "bg-red-500/10 border-red-500/40"
+          : "bg-[#141414] border-neutral-800";
+    calendarCells.push(
+      <button
+        key={day}
+        type="button"
+        onClick={() => {
+          setSelectedDay(dateKey);
+          setDayModalOpen(true);
+        }}
+        className={`aspect-square ${tone} border rounded-lg p-1 sm:p-1.5 text-left hover:border-neutral-500 transition-colors ${isToday ? "ring-2 ring-blue-500" : ""} flex flex-col`}
+      >
+        <div className="text-[11px] sm:text-xs font-semibold text-white">{day}</div>
+        {dayTrades.length > 0 && (
+          <>
+            <div className="text-[9px] sm:text-[10px] text-neutral-400 leading-tight">
+              {dayTrades.length} trade{dayTrades.length !== 1 ? "s" : ""}
+            </div>
+            <div
+              className={`text-[10px] sm:text-xs font-bold mt-auto tabular-nums ${
+                pnl >= 0 ? "text-emerald-400" : "text-red-400"
+              }`}
+            >
+              {pnl >= 0 ? "+" : "-"}${Math.abs(pnl).toFixed(0)}
+            </div>
+          </>
+        )}
+      </button>
     );
   }
 
+  const selectedDayTrades = selectedDay
+    ? tradesByDay.get(selectedDay) || []
+    : [];
+
   return (
-    <div className="min-h-screen bg-[#0a0a0a] pb-8">
-      <header className="sticky top-0 z-50 border-b border-neutral-800 bg-[#141414]/95 backdrop-blur-sm shadow-lg">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="flex h-16 items-center justify-between">
-            <div className="flex items-center gap-8">
-              <h1 className="text-xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-                Trading Journal
-              </h1>
-              <nav className="hidden md:flex gap-6">
-                <Link to="/dashboard" className="text-sm text-neutral-400 hover:text-white transition-colors">Dashboard</Link>
-                <Link to="/trades" className="text-sm font-medium text-white">Trades</Link>
-                <Link to="/analytics" className="text-sm text-neutral-400 hover:text-white transition-colors">Analytics</Link>
-                <Link to="/portfolio" className="text-sm text-neutral-400 hover:text-white transition-colors">Portfolio</Link>
-              </nav>
-            </div>
-            <div className="flex items-center gap-4">
-              <div className="text-sm text-neutral-400">
-                <span className="hidden sm:inline">Welcome, </span>
-                <span className="font-medium text-white">{user?.username || 'Trader'}</span>
-              </div>
-              <button onClick={() => { logout(); nav("/"); }} className="text-sm px-3 py-1.5 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-lg transition-colors">
-                Logout
-              </button>
-            </div>
-          </div>
-        </div>
-      </header>
+    <div className="min-h-screen bg-[#0a0a0a] pb-12">
+      <Header />
 
-      <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between my-6 gap-3">
+      <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-6">
           <div>
-            <h2 className="text-2xl font-bold text-white mb-1">Trading Calendar</h2>
-            <p className="text-sm text-neutral-400">Click any day to view or add trades</p>
+            <h1 className="text-2xl sm:text-3xl font-bold text-white">Trading Calendar</h1>
+            <p className="text-sm text-neutral-400 mt-1">
+              Click a day to review trades or log a new one
+            </p>
           </div>
-          <button
-            onClick={() => {
-              setSelectedDay(null);
-              setShowAddModal(true);
-            }}
-            className="w-full sm:w-auto px-4 py-2 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white text-sm font-medium rounded-lg shadow-lg shadow-blue-500/20 transition-all"
-          >
-            + Add Trade
-          </button>
+          <div className="flex gap-2 w-full sm:w-auto">
+            <Button
+              variant="secondary"
+              className="flex-1 sm:flex-initial"
+              onClick={() => {
+                setStrategyForm(EMPTY_STRATEGY);
+                setStrategyModalOpen(true);
+              }}
+            >
+              New Strategy
+            </Button>
+            <Button className="flex-1 sm:flex-initial" onClick={() => openAddModal()}>
+              + Add Trade
+            </Button>
+          </div>
         </div>
 
-        <div className="flex items-center justify-between mb-4 bg-[#141414] border border-neutral-800 rounded-xl p-3">
-          <button onClick={prevMonth} className="p-1.5 hover:bg-neutral-800 rounded-lg transition-colors">
-            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-          </button>
-          <h3 className="text-xl font-bold text-white">
-            {monthNames[currentDate.getMonth()]} {currentDate.getFullYear()}
-          </h3>
-          <button onClick={nextMonth} className="p-1.5 hover:bg-neutral-800 rounded-lg transition-colors">
-            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
-          </button>
-        </div>
+        {loading ? (
+          <div className="py-16">
+            <Spinner label="Loading trades…" />
+          </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+              <Stat label="Trades this month" value={monthStats.total} />
+              <Stat label="Wins" value={monthStats.wins} tone="positive" />
+              <Stat label="Losses" value={monthStats.losses} tone="negative" />
+              <Stat
+                label="Month P&L"
+                value={`${monthStats.pnl >= 0 ? "+" : "-"}$${Math.abs(monthStats.pnl).toFixed(2)}`}
+                tone={monthStats.pnl >= 0 ? "positive" : "negative"}
+              />
+            </div>
 
-        <div className="bg-[#141414] border border-neutral-800 rounded-xl p-4">
-          <div className="grid grid-cols-7 gap-2 mb-2">
-            {dayNames.map((day, idx) => (
-              <div key={day} className="text-center text-xs font-semibold text-neutral-400 py-1">
-                <span className="hidden sm:inline">{day}</span>
-                <span className="sm:hidden">{dayNamesShort[idx]}</span>
+            <Card padding="p-4">
+              <div className="flex items-center justify-between mb-4">
+                <button
+                  onClick={() =>
+                    setCurrentDate(
+                      new Date(currentDate.getFullYear(), currentDate.getMonth() - 1)
+                    )
+                  }
+                  className="p-2 rounded-lg hover:bg-neutral-800 transition-colors text-neutral-300"
+                  aria-label="Previous month"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                  </svg>
+                </button>
+                <h3 className="text-lg sm:text-xl font-bold text-white">
+                  {MONTHS[currentDate.getMonth()]} {currentDate.getFullYear()}
+                </h3>
+                <button
+                  onClick={() =>
+                    setCurrentDate(
+                      new Date(currentDate.getFullYear(), currentDate.getMonth() + 1)
+                    )
+                  }
+                  className="p-2 rounded-lg hover:bg-neutral-800 transition-colors text-neutral-300"
+                  aria-label="Next month"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
               </div>
-            ))}
-          </div>
-          <div className="grid grid-cols-7 gap-2">
-            {generateCalendar()}
-          </div>
-        </div>
+
+              <div className="grid grid-cols-7 gap-1 sm:gap-2 mb-2">
+                {DAY_NAMES.map((d) => (
+                  <div
+                    key={d}
+                    className="text-center text-[10px] sm:text-xs font-semibold text-neutral-400 py-1"
+                  >
+                    <span className="hidden sm:inline">{d}</span>
+                    <span className="sm:hidden">{d[0]}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="grid grid-cols-7 gap-1 sm:gap-2">{calendarCells}</div>
+            </Card>
+          </>
+        )}
       </main>
 
-      {showDayModal && selectedDay && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setShowDayModal(false)}>
-          <div className="bg-[#141414] border border-neutral-800 rounded-2xl w-full max-w-2xl max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <div className="sticky top-0 bg-[#141414] border-b border-neutral-800 p-4 flex items-center justify-between">
-              <h3 className="text-xl font-bold text-white">
-                {new Date(selectedDay).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
-              </h3>
-              <button onClick={() => setShowDayModal(false)} className="text-neutral-400 hover:text-white">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-            
-            <div className="p-4">
-              <button
-                onClick={() => setShowAddModal(true)}
-                className="w-full mb-4 py-2 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white text-sm font-medium rounded-lg transition-all"
-              >
-                + Add Trade for This Day
-              </button>
-
-              {getTradesForDay(parseInt(selectedDay.split('-')[2])).length === 0 ? (
-                <div className="text-center py-12 text-neutral-400">
-                  No trades recorded for this day
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {getTradesForDay(parseInt(selectedDay.split('-')[2])).map((trade) => (
-                    <div key={trade.id} className="bg-[#0a0a0a] border border-neutral-800 rounded-lg p-3 hover:border-neutral-700 transition-colors">
-                      <div className="flex items-start justify-between mb-2">
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <h4 className="text-base font-bold text-white">{trade.symbol}</h4>
-                            <span className={`text-xs font-bold px-2 py-0.5 rounded ${
-                              trade.direction === 'LONG' 
-                                ? 'bg-blue-500/20 text-blue-400' 
-                                : 'bg-orange-500/20 text-orange-400'
-                            }`}>
-                              {trade.direction}
-                            </span>
-                          </div>
-                          <p className="text-xs text-neutral-400">
-                            {new Date(trade.trade_date).toLocaleTimeString('en-US', {
-                              hour: '2-digit',
-                              minute: '2-digit',
-                              hour12: true
-                            })}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <div className={`text-lg font-bold ${parseFloat(trade.pnl) >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
-                            ${parseFloat(trade.pnl).toFixed(2)}
-                          </div>
-                          <button
-                            onClick={() => handleDeleteTrade(trade.id)}
-                            className="p-1.5 text-neutral-400 hover:text-red-500 transition-colors"
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
-                          </button>
-                        </div>
+      {/* Day details modal */}
+      <Modal
+        open={dayModalOpen}
+        onClose={() => setDayModalOpen(false)}
+        title={selectedDay ? formatDayDate(selectedDay) : "Day"}
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setDayModalOpen(false)}>
+              Close
+            </Button>
+            <Button onClick={() => openAddModal(selectedDay)}>
+              + Add Trade
+            </Button>
+          </>
+        }
+      >
+        {selectedDayTrades.length === 0 ? (
+          <div className="text-center py-10 text-neutral-400">
+            No trades recorded for this day
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {selectedDayTrades.map((trade) => {
+              const pnlValue = parseFloat(trade.pnl || 0);
+              const pnlPct = parseFloat(trade.pnl_percent || 0);
+              return (
+                <div
+                  key={trade.id}
+                  className="bg-[#0a0a0a] border border-neutral-800 rounded-lg p-3"
+                >
+                  <div className="flex items-start justify-between mb-2 gap-2">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h4 className="text-base font-bold text-white truncate">
+                          {trade.symbol}
+                        </h4>
+                        <span
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                            trade.direction === "LONG"
+                              ? "bg-blue-500/20 text-blue-300"
+                              : "bg-orange-500/20 text-orange-300"
+                          }`}
+                        >
+                          {trade.direction}
+                        </span>
                       </div>
-                      <div className="grid grid-cols-2 gap-2 text-xs">
-                        <div>
-                          <span className="text-neutral-400">Entry:</span>
-                          <span className="ml-2 text-white font-medium">${trade.entry_price}</span>
-                        </div>
-                        <div>
-                          <span className="text-neutral-400">Exit:</span>
-                          <span className="ml-2 text-white font-medium">${trade.exit_price || '-'}</span>
-                        </div>
-                        <div>
-                          <span className="text-neutral-400">Size:</span>
-                          <span className="ml-2 text-white font-medium">{trade.position_size}</span>
-                        </div>
-                        <div>
-                          <span className="text-neutral-400">P&L %:</span>
-                          <span className={`ml-2 font-medium ${parseFloat(trade.pnl_percent) >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
-                            {parseFloat(trade.pnl_percent).toFixed(2)}%
-                          </span>
-                        </div>
-                      </div>
-                      {trade.notes && (
-                        <p className="mt-2 text-xs text-neutral-400 italic">{trade.notes}</p>
-                      )}
+                      <p className="text-xs text-neutral-400 mt-0.5">
+                        {new Date(trade.trade_date).toLocaleTimeString("en-US", {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                          hour12: true,
+                        })}
+                      </p>
                     </div>
-                  ))}
+                    <div className="flex items-center gap-2 shrink-0">
+                      <div
+                        className={`text-lg font-bold tabular-nums ${
+                          pnlValue >= 0 ? "text-emerald-400" : "text-red-400"
+                        }`}
+                      >
+                        {pnlValue >= 0 ? "+" : "-"}${Math.abs(pnlValue).toFixed(2)}
+                      </div>
+                      <button
+                        onClick={() => setConfirmDelete(trade.id)}
+                        className="p-1.5 text-neutral-400 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors"
+                        aria-label="Delete trade"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div>
+                      <span className="text-neutral-400">Entry:</span>{" "}
+                      <span className="text-white font-medium tabular-nums">
+                        ${trade.entry_price}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-neutral-400">Exit:</span>{" "}
+                      <span className="text-white font-medium tabular-nums">
+                        {trade.exit_price ? `$${trade.exit_price}` : "—"}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-neutral-400">Size:</span>{" "}
+                      <span className="text-white font-medium tabular-nums">
+                        {trade.position_size}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-neutral-400">P&L %:</span>{" "}
+                      <span
+                        className={`font-medium tabular-nums ${
+                          pnlPct >= 0 ? "text-emerald-400" : "text-red-400"
+                        }`}
+                      >
+                        {pnlPct.toFixed(2)}%
+                      </span>
+                    </div>
+                  </div>
+                  {trade.notes && (
+                    <p className="mt-2 text-xs text-neutral-400 italic border-l-2 border-neutral-700 pl-2">
+                      {trade.notes}
+                    </p>
+                  )}
                 </div>
-              )}
-            </div>
+              );
+            })}
           </div>
-        </div>
-      )}
+        )}
+      </Modal>
 
-      {showAddModal && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setShowAddModal(false)}>
-          <div className="bg-[#141414] border border-neutral-800 rounded-2xl w-full max-w-2xl max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <div className="sticky top-0 bg-[#141414] border-b border-neutral-800 p-4 flex items-center justify-between">
-              <h3 className="text-xl font-bold text-white">Add New Trade</h3>
-              <button onClick={() => setShowAddModal(false)} className="text-neutral-400 hover:text-white">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-            
-            <form onSubmit={handleSubmit} className="p-4">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div>
-                  <label className="block text-sm font-medium text-neutral-300 mb-1">Symbol</label>
-                  <input
-                    name="symbol"
-                    value={formData.symbol}
-                    onChange={handleChange}
-                    required
-                    className="w-full px-3 py-2 bg-[#0a0a0a] border border-neutral-700 rounded-lg text-white text-sm placeholder-neutral-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                    placeholder="EURUSD"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-neutral-300 mb-1">Direction</label>
-                  <select
-                    name="direction"
-                    value={formData.direction}
-                    onChange={handleChange}
-                    className="w-full px-3 py-2 bg-[#0a0a0a] border border-neutral-700 rounded-lg text-white text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                  >
-                    <option value="LONG">Long (Buy)</option>
-                    <option value="SHORT">Short (Sell)</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-neutral-300 mb-1">Strategy</label>
-                  <select
-                    name="strategy"
-                    value={formData.strategy}
-                    onChange={handleChange}
-                    className="w-full px-3 py-2 bg-[#0a0a0a] border border-neutral-700 rounded-lg text-white text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                  >
-                    <option value="">None</option>
-                    {strategies.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-neutral-300 mb-1">Entry Date & Time</label>
-                  <input
-                    type="datetime-local"
-                    name="trade_date"
-                    value={formData.trade_date || (selectedDay ? `${selectedDay}T12:00` : '')}
-                    onChange={handleChange}
-                    required
-                    className="w-full px-3 py-2 bg-[#0a0a0a] border border-neutral-700 rounded-lg text-white text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-neutral-300 mb-1">Exit Date & Time</label>
-                  <input
-                    type="datetime-local"
-                    name="close_date"
-                    value={formData.close_date}
-                    onChange={handleChange}
-                    className="w-full px-3 py-2 bg-[#0a0a0a] border border-neutral-700 rounded-lg text-white text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-neutral-300 mb-1">Entry Price</label>
-                  <input
-                    type="number"
-                    step="0.0001"
-                    name="entry_price"
-                    value={formData.entry_price}
-                    onChange={handleChange}
-                    required
-                    className="w-full px-3 py-2 bg-[#0a0a0a] border border-neutral-700 rounded-lg text-white text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-neutral-300 mb-1">Exit Price</label>
-                  <input
-                    type="number"
-                    step="0.0001"
-                    name="exit_price"
-                    value={formData.exit_price}
-                    onChange={handleChange}
-                    className="w-full px-3 py-2 bg-[#0a0a0a] border border-neutral-700 rounded-lg text-white text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-neutral-300 mb-1">Position Size</label>
-                  <input
-                    type="number"
-                    name="position_size"
-                    value={formData.position_size}
-                    onChange={handleChange}
-                    required
-                    className="w-full px-3 py-2 bg-[#0a0a0a] border border-neutral-700 rounded-lg text-white text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-neutral-300 mb-1">Fees</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    name="fees"
-                    value={formData.fees}
-                    onChange={handleChange}
-                    className="w-full px-3 py-2 bg-[#0a0a0a] border border-neutral-700 rounded-lg text-white text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <label className="block text-sm font-medium text-neutral-300 mb-1">Tags (comma-separated)</label>
-                  <input
-                    name="tags"
-                    value={formData.tags}
-                    onChange={handleChange}
-                    className="w-full px-3 py-2 bg-[#0a0a0a] border border-neutral-700 rounded-lg text-white text-sm placeholder-neutral-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                    placeholder="breakout, london-session"
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <label className="block text-sm font-medium text-neutral-300 mb-1">Notes</label>
-                  <textarea
-                    name="notes"
-                    value={formData.notes}
-                    onChange={handleChange}
-                    rows="2"
-                    className="w-full px-3 py-2 bg-[#0a0a0a] border border-neutral-700 rounded-lg text-white text-sm placeholder-neutral-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                  />
-                </div>
-              </div>
-              <button
-                type="submit"
-                className="mt-4 w-full py-2 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white text-sm font-medium rounded-lg shadow-lg shadow-blue-500/20 transition-all"
+      {/* Add trade modal */}
+      <Modal
+        open={addModalOpen}
+        onClose={() => setAddModalOpen(false)}
+        title="Add Trade"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setAddModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" form="add-trade-form" loading={submitting}>
+              {submitting ? "Saving…" : "Save Trade"}
+            </Button>
+          </>
+        }
+      >
+        <form id="add-trade-form" onSubmit={handleSubmit} className="grid gap-3 sm:grid-cols-2">
+          <Input
+            label="Symbol"
+            name="symbol"
+            value={form.symbol}
+            onChange={handleChange}
+            placeholder="EURUSD"
+            required
+          />
+          <Select
+            label="Direction"
+            name="direction"
+            value={form.direction}
+            onChange={handleChange}
+          >
+            <option value="LONG">Long (Buy)</option>
+            <option value="SHORT">Short (Sell)</option>
+          </Select>
+          <div className="sm:col-span-2">
+            <label className="block text-sm font-medium text-neutral-300 mb-1">
+              Strategy
+            </label>
+            <div className="flex gap-2">
+              <select
+                name="strategy"
+                value={form.strategy}
+                onChange={handleChange}
+                className="flex-1 px-3 py-2 bg-[#0a0a0a] border border-neutral-700 rounded-lg text-white text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
               >
-                Add Trade
-              </button>
-            </form>
+                <option value="">None</option>
+                {strategies.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+              <Button
+                variant="secondary"
+                size="sm"
+                type="button"
+                onClick={() => {
+                  setStrategyForm(EMPTY_STRATEGY);
+                  setStrategyModalOpen(true);
+                }}
+              >
+                + New
+              </Button>
+            </div>
           </div>
-        </div>
-      )}
+          <Input
+            label="Entry Date & Time"
+            type="datetime-local"
+            name="trade_date"
+            value={form.trade_date}
+            onChange={handleChange}
+            required
+          />
+          <Input
+            label="Exit Date & Time"
+            type="datetime-local"
+            name="close_date"
+            value={form.close_date}
+            onChange={handleChange}
+          />
+          <Input
+            label="Entry Price"
+            type="number"
+            step="0.0001"
+            name="entry_price"
+            value={form.entry_price}
+            onChange={handleChange}
+            required
+          />
+          <Input
+            label="Exit Price"
+            type="number"
+            step="0.0001"
+            name="exit_price"
+            value={form.exit_price}
+            onChange={handleChange}
+          />
+          <Input
+            label="Position Size"
+            type="number"
+            step="0.0001"
+            name="position_size"
+            value={form.position_size}
+            onChange={handleChange}
+            required
+          />
+          <Input
+            label="Fees"
+            type="number"
+            step="0.01"
+            name="fees"
+            value={form.fees}
+            onChange={handleChange}
+          />
+          <div className="sm:col-span-2">
+            <Input
+              label="Tags (comma-separated)"
+              name="tags"
+              value={form.tags}
+              onChange={handleChange}
+              placeholder="breakout, london-session"
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <Textarea
+              label="Notes"
+              name="notes"
+              rows={3}
+              value={form.notes}
+              onChange={handleChange}
+              placeholder="Setup quality, emotions, mistakes…"
+            />
+          </div>
+        </form>
+      </Modal>
+
+      {/* New strategy modal */}
+      <Modal
+        open={strategyModalOpen}
+        onClose={() => setStrategyModalOpen(false)}
+        title="New Strategy"
+        maxWidth="max-w-lg"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setStrategyModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" form="add-strategy-form" loading={strategySaving}>
+              Save
+            </Button>
+          </>
+        }
+      >
+        <form id="add-strategy-form" onSubmit={handleStrategySubmit} className="space-y-4">
+          <Input
+            label="Name"
+            name="name"
+            value={strategyForm.name}
+            onChange={(e) =>
+              setStrategyForm((s) => ({ ...s, name: e.target.value }))
+            }
+            required
+          />
+          <Textarea
+            label="Description"
+            name="description"
+            rows={4}
+            value={strategyForm.description}
+            onChange={(e) =>
+              setStrategyForm((s) => ({ ...s, description: e.target.value }))
+            }
+            placeholder="Rules, entry criteria, exit criteria…"
+          />
+        </form>
+      </Modal>
+
+      {/* Delete confirmation */}
+      <Modal
+        open={confirmDelete !== null}
+        onClose={() => setConfirmDelete(null)}
+        title="Delete trade?"
+        maxWidth="max-w-md"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setConfirmDelete(null)}>
+              Cancel
+            </Button>
+            <Button variant="danger" onClick={handleDelete}>
+              Delete
+            </Button>
+          </>
+        }
+      >
+        <p className="text-sm text-neutral-300">
+          This will permanently remove the trade from your journal. This action
+          cannot be undone.
+        </p>
+      </Modal>
     </div>
   );
 }
