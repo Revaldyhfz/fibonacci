@@ -19,6 +19,22 @@ from rest_framework_simplejwt.views import (
     TokenRefreshView,
 )
 
+from core.throttles import LoginRateThrottle
+
+
+class ThrottledTokenObtainPairView(TokenObtainPairView):
+    """Login endpoint with an IP-keyed 'login' throttle scope (10/min).
+
+    Slows down credential-stuffing without hurting legitimate retries.
+    """
+    throttle_classes = [LoginRateThrottle]
+
+
+class ThrottledTokenRefreshView(TokenRefreshView):
+    """Refresh endpoint reuses the login scope — a hot refresh storm looks
+    indistinguishable from a brute-force attempt against the same IP."""
+    throttle_classes = [LoginRateThrottle]
+
 logger = logging.getLogger(__name__)
 
 ANALYTICS_SERVICE_URL = os.getenv('ANALYTICS_SERVICE_URL', 'http://analytics-service:8001')
@@ -82,8 +98,8 @@ def portfolio_proxy(request, path):
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('api/auth/login/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
-    path('api/auth/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path('api/auth/login/', ThrottledTokenObtainPairView.as_view(), name='token_obtain_pair'),
+    path('api/auth/refresh/', ThrottledTokenRefreshView.as_view(), name='token_refresh'),
     path('api/', include('core.urls')),
     path('analytics/<path:path>', analytics_proxy),
     path('portfolio/<path:path>', portfolio_proxy),
