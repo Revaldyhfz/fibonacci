@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Modal from "../ui/Modal";
 import Button from "../ui/Button";
 import { Input, Select, Textarea } from "../ui/Input";
+import AssetLogo from "../portfolio/AssetLogo";
+import useDebounce from "../../hooks/useDebounce";
 
 const EMPTY = {
   symbol: "",
@@ -56,14 +58,56 @@ export default function TradeFormModal({
   const [errors, setErrors] = useState({});
   const symbolRef = useRef(null);
 
+  // Symbol autocomplete — same endpoint the portfolio Add modal uses
+  const [suggestions, setSuggestions] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const searchAbort = useRef(null);
+  const debouncedSymbol = useDebounce(form.symbol, 220);
+
   // Reset form whenever the modal opens with fresh initial
   useEffect(() => {
     if (!open) return;
     setForm({ ...EMPTY, ...(initial || {}) });
     setErrors({});
+    setSuggestions([]);
+    setShowSuggestions(false);
     const t = setTimeout(() => symbolRef.current?.focus(), 80);
     return () => clearTimeout(t);
   }, [open, initial]);
+
+  // Live search as the user types a symbol
+  useEffect(() => {
+    if (!open) return;
+    const q = (debouncedSymbol || "").trim();
+    if (q.length < 2) {
+      setSuggestions([]);
+      setSearching(false);
+      return;
+    }
+    if (searchAbort.current) searchAbort.current.abort();
+    const ctl = new AbortController();
+    searchAbort.current = ctl;
+
+    const tokens = JSON.parse(localStorage.getItem("tokens") || "null");
+    const headers = tokens?.access ? { Authorization: `Bearer ${tokens.access}` } : {};
+
+    setSearching(true);
+    fetch(`/portfolio/search/${encodeURIComponent(q)}?limit=8`, {
+      headers,
+      signal: ctl.signal,
+    })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`${r.status}`))))
+      .then((data) => setSuggestions(Array.isArray(data.results) ? data.results : []))
+      .catch((e) => {
+        if (e.name !== "AbortError") setSuggestions([]);
+      })
+      .finally(() => {
+        if (!ctl.signal.aborted) setSearching(false);
+      });
+
+    return () => ctl.abort();
+  }, [debouncedSymbol, open]);
 
   const pnl = useMemo(() => {
     const entry = parseFloat(form.entry_price);
@@ -107,8 +151,18 @@ export default function TradeFormModal({
 
   const pickSymbol = (s) => {
     setForm((f) => ({ ...f, symbol: s }));
+    setShowSuggestions(false);
+    setSuggestions([]);
     // keep focus responsive
     symbolRef.current?.focus();
+  };
+
+  const pickSuggestion = (r) => {
+    // Trade journal stores the raw symbol (e.g. "BTCUSDT", "AAPL", "BBCA.JK")
+    // — not the Binance id / Yahoo ticker — so prefer `symbol`.
+    const sym = (r.symbol || r.id || "").toUpperCase();
+    if (!sym) return;
+    pickSymbol(sym);
   };
 
   const pnlColor = pnl == null ? "text-neutral-400" : pnl.net >= 0 ? "text-emerald-400" : "text-red-400";
@@ -132,16 +186,64 @@ export default function TradeFormModal({
         {/* Setup */}
         <Section title="Setup" hint="What & why">
           <div className="sm:col-span-2">
-            <Input
-              ref={symbolRef}
-              label="Symbol *"
-              name="symbol"
-              value={form.symbol}
-              onChange={(e) => setForm((f) => ({ ...f, symbol: e.target.value.toUpperCase() }))}
-              placeholder="XAUUSD"
-              error={errors.symbol}
-              autoComplete="off"
-            />
+            <div className="relative">
+              <Input
+                ref={symbolRef}
+                label="Symbol *"
+                name="symbol"
+                value={form.symbol}
+                onChange={(e) => {
+                  setForm((f) => ({ ...f, symbol: e.target.value.toUpperCase() }));
+                  setShowSuggestions(true);
+                }}
+                onFocus={() => form.symbol.trim().length >= 2 && setShowSuggestions(true)}
+                onBlur={() => {
+                  // Delay so a click on a suggestion can register before we hide.
+                  setTimeout(() => setShowSuggestions(false), 150);
+                }}
+                placeholder="XAUUSD, BTCUSDT, AAPL, BBCA.JK…"
+                error={errors.symbol}
+                autoComplete="off"
+              />
+              {showSuggestions && (searching || suggestions.length > 0) && (
+                <div className="absolute left-0 right-0 top-full mt-1 z-20 max-h-72 overflow-auto rounded-lg border border-neutral-700 bg-[#0c0c0c] shadow-xl shadow-black/40">
+                  {searching && suggestions.length === 0 && (
+                    <div className="px-3 py-2 text-xs text-neutral-500">Searching…</div>
+                  )}
+                  {suggestions.map((r) => {
+                    const sym = (r.symbol || "").toUpperCase();
+                    const label = r.name || r.long_name || "";
+                    const market = r.market || (r.asset_type === "crypto" ? "CRYPTO" : null);
+                    return (
+                      <button
+                        type="button"
+                        key={`${r.asset_type || "x"}:${r.id || sym}`}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => pickSuggestion(r)}
+                        className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-neutral-800/60 border-b border-neutral-800 last:border-b-0"
+                      >
+                        <AssetLogo symbol={sym} src={r.logo_url} size={22} />
+                        <div className="min-w-0 flex-1">
+                          <div className="text-sm font-semibold text-white tabular-nums truncate">
+                            {sym}
+                          </div>
+                          {label && (
+                            <div className="text-[11px] text-neutral-500 truncate">
+                              {label}
+                            </div>
+                          )}
+                        </div>
+                        {market && (
+                          <span className="text-[10px] uppercase tracking-wider text-neutral-400 bg-neutral-900 border border-neutral-700 rounded px-1.5 py-0.5 shrink-0">
+                            {market}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
             <div className="mt-1.5 flex flex-wrap gap-1">
               {QUICK_SYMBOLS.map((s) => (
                 <button

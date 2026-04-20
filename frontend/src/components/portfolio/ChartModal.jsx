@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import AssetLogo from "./AssetLogo";
 
 // Country-code → TradingView exchange prefix
 const MARKET_TO_EXCHANGE = {
@@ -115,13 +116,16 @@ export default function ChartModal({ open, onClose, asset }) {
         className="bg-[#0a0a0a] border border-neutral-800 rounded-2xl w-full max-w-5xl flex flex-col max-h-[92vh]"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex-shrink-0 p-4 border-b border-neutral-800 flex items-center justify-between">
-          <div className="min-w-0">
-            <h3 className="text-lg font-semibold text-white truncate">
-              {asset.symbol?.toUpperCase() || "Chart"}{" "}
-              <span className="text-neutral-500 text-sm">· {tvSymbol}</span>
-            </h3>
-            <p className="text-xs text-neutral-400">Powered by TradingView</p>
+        <div className="flex-shrink-0 p-4 border-b border-neutral-800 flex items-center justify-between gap-3">
+          <div className="min-w-0 flex items-center gap-3">
+            <AssetLogo symbol={asset.symbol} src={asset.logo_url} size={36} />
+            <div className="min-w-0">
+              <h3 className="text-lg font-semibold text-white truncate">
+                {asset.symbol?.toUpperCase() || "Chart"}{" "}
+                <span className="text-neutral-500 text-sm">· {tvSymbol}</span>
+              </h3>
+              <p className="text-xs text-neutral-400">Powered by TradingView</p>
+            </div>
           </div>
           <button
             onClick={onClose}

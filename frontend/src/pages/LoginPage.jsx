@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { Input } from "../components/ui/Input";
 import Button from "../components/ui/Button";
+import GoogleSignInButton from "../components/auth/GoogleSignInButton";
 
 export default function LoginPage() {
   const nav = useNavigate();
@@ -73,6 +74,10 @@ export default function LoginPage() {
               {loading ? "Signing in…" : "Sign in"}
             </Button>
           </form>
+
+          <div className="mt-6">
+            <GoogleSignInButton onError={setError} onBusy={setLoading} />
+          </div>
 
           <p className="mt-6 pt-6 border-t border-neutral-800 text-center text-sm text-neutral-400">
             New here?{" "}

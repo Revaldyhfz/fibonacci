@@ -8,12 +8,13 @@ promotion is a separate explicit step (management command or admin endpoint).
 
 from django.contrib.auth.models import User
 from rest_framework import serializers, status
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from .auth_views import _serialize_user
+from .throttles import RegisterRateThrottle
 
 
 class RegistrationSerializer(serializers.ModelSerializer):
@@ -39,6 +40,7 @@ class RegistrationSerializer(serializers.ModelSerializer):
 
 @api_view(["POST"])
 @permission_classes([AllowAny])
+@throttle_classes([RegisterRateThrottle])
 def register(request):
     """Create a new account and return JWT tokens so the client is logged in."""
     serializer = RegistrationSerializer(data=request.data)
