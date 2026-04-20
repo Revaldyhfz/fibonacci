@@ -114,7 +114,16 @@ export default function AnalyticsPage() {
   }, [fetchAnalytics]);
 
   const advanced = overallStats?.advanced_metrics || {};
+  const meta = overallStats?._meta || {};
   const hasData = !!overallStats?.total_trades && overallStats.total_trades > 0;
+
+  // Compact "need N more trades" message used when a metric hasn't hit its
+  // minimum sample size. Keeps users from acting on noisy early numbers.
+  const shortfallText = (key) => {
+    const m = meta[key];
+    if (!m || m.sufficient) return null;
+    return `Need ${m.shortfall} more trade${m.shortfall === 1 ? "" : "s"} (${m.actual}/${m.required})`;
+  };
 
   const hourlyBins = useMemo(() => {
     if (!hourlyStats) return [];
@@ -221,7 +230,7 @@ export default function AnalyticsPage() {
           </div>
         </div>
 
-        {overallStats.total_trades < 10 && (
+        {overallStats.total_trades < 20 && (
           <Card className="mb-6 bg-yellow-500/5 border-yellow-500/30">
             <div className="flex items-start gap-3">
               <svg className="w-5 h-5 text-yellow-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -229,12 +238,13 @@ export default function AnalyticsPage() {
               </svg>
               <div>
                 <div className="text-sm font-medium text-yellow-300 mb-1">
-                  Limited data
+                  Limited sample — metrics gated below
                 </div>
                 <div className="text-xs text-neutral-300">
                   You have {overallStats.total_trades} trade
-                  {overallStats.total_trades !== 1 ? "s" : ""} in this period.
-                  Some metrics need at least 10–20 trades to be meaningful.
+                  {overallStats.total_trades !== 1 ? "s" : ""}. Each metric unlocks
+                  once it has enough samples to be statistically meaningful
+                  (win rate & Sharpe 20, Profit Factor 30, streaks 15).
                 </div>
               </div>
             </div>
@@ -253,18 +263,32 @@ export default function AnalyticsPage() {
               { key: "calmar_ratio", label: "Calmar Ratio", thresholds: { excellent: 3, good: 2, acceptable: 1 } },
             ].map((m) => {
               const value = Number(advanced[m.key] || 0);
+              const shortfall = shortfallText(m.key);
               return (
                 <div
                   key={m.key}
                   className="bg-[#0a0a0a]/70 border border-neutral-800 rounded-lg p-4"
                 >
                   <div className="text-xs text-neutral-400 mb-1">{m.label}</div>
-                  <div className={`text-2xl sm:text-3xl font-bold mb-1 tabular-nums ${metricColor(value, m.thresholds)}`}>
-                    {value.toFixed(2)}
-                  </div>
-                  <div className="text-xs text-neutral-500 leading-snug">
-                    {METRIC_HINTS[m.key](value)}
-                  </div>
+                  {shortfall ? (
+                    <>
+                      <div className="text-2xl sm:text-3xl font-bold mb-1 tabular-nums text-neutral-600">
+                        —
+                      </div>
+                      <div className="text-xs text-yellow-500/80 leading-snug">
+                        {shortfall}
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className={`text-2xl sm:text-3xl font-bold mb-1 tabular-nums ${metricColor(value, m.thresholds)}`}>
+                        {value.toFixed(2)}
+                      </div>
+                      <div className="text-xs text-neutral-500 leading-snug">
+                        {METRIC_HINTS[m.key](value)}
+                      </div>
+                    </>
+                  )}
                 </div>
               );
             })}
@@ -273,101 +297,133 @@ export default function AnalyticsPage() {
 
         <div className="grid gap-6 lg:grid-cols-2 mb-6">
           <Card title="Drawdown Analysis">
-            <div className="space-y-3">
-              <div className="flex items-center justify-between p-3 bg-[#0a0a0a] rounded-lg">
-                <div>
-                  <div className="text-xs text-neutral-400 mb-1">Maximum Drawdown</div>
-                  <div className="text-xl sm:text-2xl font-bold text-red-400 tabular-nums">
-                    ${advanced.max_drawdown || "0.00"}
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className="text-xs text-neutral-400 mb-1">Percentage</div>
-                  <div className="text-xl sm:text-2xl font-bold text-red-400 tabular-nums">
-                    {advanced.max_drawdown_pct || "0.00"}%
-                  </div>
+            {shortfallText("max_drawdown") ? (
+              <div className="p-6 text-center text-sm text-neutral-400">
+                <div className="text-3xl mb-2 opacity-50">📉</div>
+                {shortfallText("max_drawdown")}
+                <div className="text-xs text-neutral-500 mt-1">
+                  Drawdown stats need at least 10 closed trades.
                 </div>
               </div>
-              <div className="flex items-center justify-between p-3 bg-[#0a0a0a] rounded-lg">
-                <div className="text-sm text-neutral-300">Recovery Factor</div>
-                <div
-                  className={`text-lg sm:text-xl font-bold tabular-nums ${
-                    advanced.recovery_factor >= 3
-                      ? "text-emerald-400"
-                      : advanced.recovery_factor >= 2
-                        ? "text-blue-400"
-                        : "text-yellow-400"
-                  }`}
-                >
-                  {advanced.recovery_factor || "0.00"}x
+            ) : (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between p-3 bg-[#0a0a0a] rounded-lg">
+                  <div>
+                    <div className="text-xs text-neutral-400 mb-1">Maximum Drawdown</div>
+                    <div className="text-xl sm:text-2xl font-bold text-red-400 tabular-nums">
+                      ${advanced.max_drawdown || "0.00"}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-xs text-neutral-400 mb-1">Percentage</div>
+                    <div className="text-xl sm:text-2xl font-bold text-red-400 tabular-nums">
+                      {advanced.max_drawdown_pct || "0.00"}%
+                    </div>
+                  </div>
                 </div>
+                <div className="flex items-center justify-between p-3 bg-[#0a0a0a] rounded-lg">
+                  <div className="text-sm text-neutral-300">Recovery Factor</div>
+                  <div
+                    className={`text-lg sm:text-xl font-bold tabular-nums ${
+                      advanced.recovery_factor >= 3
+                        ? "text-emerald-400"
+                        : advanced.recovery_factor >= 2
+                          ? "text-blue-400"
+                          : "text-yellow-400"
+                    }`}
+                  >
+                    {advanced.recovery_factor || "0.00"}x
+                  </div>
+                </div>
+                <p className="text-xs text-neutral-500 p-3 bg-neutral-900/30 rounded-lg">
+                  A 50% loss requires a 100% gain to recover. Keep drawdowns under
+                  20% for optimal psychological management.
+                </p>
               </div>
-              <p className="text-xs text-neutral-500 p-3 bg-neutral-900/30 rounded-lg">
-                A 50% loss requires a 100% gain to recover. Keep drawdowns under
-                20% for optimal psychological management.
-              </p>
-            </div>
+            )}
           </Card>
 
           <Card title="Trade Expectancy">
-            <div className="space-y-3">
-              <div className="flex items-center justify-between p-3 bg-[#0a0a0a] rounded-lg">
-                <div>
-                  <div className="text-xs text-neutral-400 mb-1">Expectancy per Trade</div>
-                  <div className={`text-xl sm:text-2xl font-bold tabular-nums ${advanced.expectancy >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                    ${advanced.expectancy || "0.00"}
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className="text-xs text-neutral-400 mb-1">Avg R-Multiple</div>
-                  <div className={`text-xl sm:text-2xl font-bold tabular-nums ${advanced.avg_r_multiple >= 0.5 ? "text-emerald-400" : "text-yellow-400"}`}>
-                    {advanced.avg_r_multiple || "0.00"}R
-                  </div>
+            {shortfallText("expectancy") ? (
+              <div className="p-6 text-center text-sm text-neutral-400">
+                <div className="text-3xl mb-2 opacity-50">🎯</div>
+                {shortfallText("expectancy")}
+                <div className="text-xs text-neutral-500 mt-1">
+                  Expectancy stabilises after ~20 trades.
                 </div>
               </div>
-              <div className="flex items-center justify-between p-3 bg-[#0a0a0a] rounded-lg">
-                <div className="text-sm text-neutral-300">Win/Loss Ratio</div>
-                <div className="text-lg sm:text-xl font-bold text-blue-400 tabular-nums">
-                  {advanced.win_loss_ratio || "0.00"}:1
+            ) : (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between p-3 bg-[#0a0a0a] rounded-lg">
+                  <div>
+                    <div className="text-xs text-neutral-400 mb-1">Expectancy per Trade</div>
+                    <div className={`text-xl sm:text-2xl font-bold tabular-nums ${advanced.expectancy >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                      ${advanced.expectancy || "0.00"}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-xs text-neutral-400 mb-1">Avg R-Multiple</div>
+                    <div className={`text-xl sm:text-2xl font-bold tabular-nums ${advanced.avg_r_multiple >= 0.5 ? "text-emerald-400" : "text-yellow-400"}`}>
+                      {advanced.avg_r_multiple || "0.00"}R
+                    </div>
+                  </div>
                 </div>
+                <div className="flex items-center justify-between p-3 bg-[#0a0a0a] rounded-lg">
+                  <div className="text-sm text-neutral-300">Win/Loss Ratio</div>
+                  <div className="text-lg sm:text-xl font-bold text-blue-400 tabular-nums">
+                    {advanced.win_loss_ratio || "0.00"}:1
+                  </div>
+                </div>
+                <p className="text-xs text-neutral-500 p-3 bg-neutral-900/30 rounded-lg">
+                  Positive expectancy is required for long-term profitability.
+                  Above 0.50 is strong.
+                </p>
               </div>
-              <p className="text-xs text-neutral-500 p-3 bg-neutral-900/30 rounded-lg">
-                Positive expectancy is required for long-term profitability.
-                Above 0.50 is strong.
-              </p>
-            </div>
+            )}
           </Card>
         </div>
 
         <Card title="Streak Analysis" className="mb-6">
-          <div className="grid gap-4 grid-cols-1 sm:grid-cols-3">
-            <div className="bg-[#0a0a0a] border border-neutral-800 rounded-lg p-4">
-              <div className="text-xs text-neutral-400 mb-2">Max Win Streak</div>
-              <div className="text-2xl sm:text-3xl font-bold text-emerald-400 mb-1 tabular-nums">
-                {advanced.max_win_streak || 0}
+          {shortfallText("streaks") ? (
+            <div className="p-6 text-center text-sm text-neutral-400">
+              <div className="text-3xl mb-2 opacity-50">🔥</div>
+              {shortfallText("streaks")}
+              <div className="text-xs text-neutral-500 mt-1">
+                Streak patterns are noisy below 15 trades.
               </div>
-              <div className="text-xs text-neutral-500">consecutive wins</div>
             </div>
-            <div className="bg-[#0a0a0a] border border-neutral-800 rounded-lg p-4">
-              <div className="text-xs text-neutral-400 mb-2">Max Loss Streak</div>
-              <div className="text-2xl sm:text-3xl font-bold text-red-400 mb-1 tabular-nums">
-                {advanced.max_loss_streak || 0}
+          ) : (
+            <>
+              <div className="grid gap-4 grid-cols-1 sm:grid-cols-3">
+                <div className="bg-[#0a0a0a] border border-neutral-800 rounded-lg p-4">
+                  <div className="text-xs text-neutral-400 mb-2">Max Win Streak</div>
+                  <div className="text-2xl sm:text-3xl font-bold text-emerald-400 mb-1 tabular-nums">
+                    {advanced.max_win_streak || 0}
+                  </div>
+                  <div className="text-xs text-neutral-500">consecutive wins</div>
+                </div>
+                <div className="bg-[#0a0a0a] border border-neutral-800 rounded-lg p-4">
+                  <div className="text-xs text-neutral-400 mb-2">Max Loss Streak</div>
+                  <div className="text-2xl sm:text-3xl font-bold text-red-400 mb-1 tabular-nums">
+                    {advanced.max_loss_streak || 0}
+                  </div>
+                  <div className="text-xs text-neutral-500">consecutive losses</div>
+                </div>
+                <div className="bg-[#0a0a0a] border border-neutral-800 rounded-lg p-4">
+                  <div className="text-xs text-neutral-400 mb-2">Expected Loss Streak</div>
+                  <div className="text-2xl sm:text-3xl font-bold text-yellow-400 mb-1 tabular-nums">
+                    {advanced.expected_loss_streak || 0}
+                  </div>
+                  <div className="text-xs text-neutral-500">probabilistic estimate</div>
+                </div>
               </div>
-              <div className="text-xs text-neutral-500">consecutive losses</div>
-            </div>
-            <div className="bg-[#0a0a0a] border border-neutral-800 rounded-lg p-4">
-              <div className="text-xs text-neutral-400 mb-2">Expected Loss Streak</div>
-              <div className="text-2xl sm:text-3xl font-bold text-yellow-400 mb-1 tabular-nums">
-                {advanced.expected_loss_streak || 0}
-              </div>
-              <div className="text-xs text-neutral-500">probabilistic estimate</div>
-            </div>
-          </div>
-          <p className="mt-4 text-xs text-neutral-500 p-3 bg-neutral-900/30 rounded-lg">
-            With {overallStats.winrate_percent}% win rate, expect ~
-            {Math.ceil(advanced.expected_loss_streak || 0)} consecutive losses
-            eventually. Size positions to survive this.
-          </p>
+              <p className="mt-4 text-xs text-neutral-500 p-3 bg-neutral-900/30 rounded-lg">
+                With {overallStats.winrate_percent}% win rate, expect ~
+                {Math.ceil(advanced.expected_loss_streak || 0)} consecutive losses
+                eventually. Size positions to survive this.
+              </p>
+            </>
+          )}
         </Card>
 
         {hourlyBins.some((b) => b.count > 0) && (
@@ -418,27 +474,45 @@ export default function AnalyticsPage() {
           Object.keys(overallStats.strategy_performance).length > 0 && (
             <Card title="Strategy Performance" className="mb-6">
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {Object.entries(overallStats.strategy_performance).map(([name, stats]) => (
-                  <div key={name} className="bg-[#0a0a0a] border border-neutral-800 rounded-lg p-4">
-                    <div className="font-bold text-base text-white mb-3 truncate">{name}</div>
-                    <dl className="space-y-1.5">
-                      <div className="flex items-center justify-between text-sm">
-                        <dt className="text-xs text-neutral-400">Win Rate</dt>
-                        <dd className="font-bold text-emerald-400 tabular-nums">{stats.winrate}%</dd>
+                {Object.entries(overallStats.strategy_performance).map(([name, stats]) => {
+                  const insufficient = stats.sufficient === false;
+                  const shortfall = insufficient
+                    ? `${stats.count}/${stats.required} trades`
+                    : null;
+                  return (
+                    <div
+                      key={name}
+                      className={`bg-[#0a0a0a] border rounded-lg p-4 ${insufficient ? "border-neutral-900 opacity-60" : "border-neutral-800"}`}
+                    >
+                      <div className="flex items-center justify-between mb-3 gap-2">
+                        <div className="font-bold text-base text-white truncate">{name}</div>
+                        {insufficient && (
+                          <span className="text-[10px] uppercase tracking-wider text-yellow-400/80 bg-yellow-500/10 border border-yellow-500/20 rounded px-1.5 py-0.5 shrink-0">
+                            {shortfall}
+                          </span>
+                        )}
                       </div>
-                      <div className="flex items-center justify-between text-sm">
-                        <dt className="text-xs text-neutral-400">Trades</dt>
-                        <dd className="font-bold text-white tabular-nums">{stats.count}</dd>
-                      </div>
-                      <div className="flex items-center justify-between text-sm">
-                        <dt className="text-xs text-neutral-400">Avg P&L</dt>
-                        <dd className={`font-bold tabular-nums ${stats.avg_pnl >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                          ${stats.avg_pnl}
-                        </dd>
-                      </div>
-                    </dl>
-                  </div>
-                ))}
+                      <dl className="space-y-1.5">
+                        <div className="flex items-center justify-between text-sm">
+                          <dt className="text-xs text-neutral-400">Win Rate</dt>
+                          <dd className={`font-bold tabular-nums ${insufficient ? "text-neutral-500" : "text-emerald-400"}`}>
+                            {insufficient ? "—" : `${stats.winrate}%`}
+                          </dd>
+                        </div>
+                        <div className="flex items-center justify-between text-sm">
+                          <dt className="text-xs text-neutral-400">Trades</dt>
+                          <dd className="font-bold text-white tabular-nums">{stats.count}</dd>
+                        </div>
+                        <div className="flex items-center justify-between text-sm">
+                          <dt className="text-xs text-neutral-400">Avg P&L</dt>
+                          <dd className={`font-bold tabular-nums ${insufficient ? "text-neutral-500" : stats.avg_pnl >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                            {insufficient ? "—" : `$${stats.avg_pnl}`}
+                          </dd>
+                        </div>
+                      </dl>
+                    </div>
+                  );
+                })}
               </div>
             </Card>
           )}
@@ -446,32 +520,45 @@ export default function AnalyticsPage() {
         {sessionStats && Object.keys(sessionStats).length > 0 && (
           <Card title="Session Performance" className="mb-6">
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {Object.entries(sessionStats).map(([session, stats]) => (
-                <div key={session} className="bg-[#0a0a0a] border border-neutral-800 rounded-lg p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="font-bold text-base text-white">{session}</div>
-                    <div className="text-xs text-neutral-400">{stats.count} trades</div>
-                  </div>
-                  <div className="flex items-center gap-6">
-                    <div>
-                      <div className="text-xs text-neutral-400 mb-1">Win Rate</div>
-                      <div className="text-base font-bold text-emerald-400 tabular-nums">
-                        {stats.winrate}%
+              {Object.entries(sessionStats).map(([session, stats]) => {
+                const insufficient = stats.sufficient === false;
+                return (
+                  <div
+                    key={session}
+                    className={`bg-[#0a0a0a] border rounded-lg p-4 ${insufficient ? "border-neutral-900 opacity-60" : "border-neutral-800"}`}
+                  >
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="font-bold text-base text-white">{session}</div>
+                      <div className="flex items-center gap-2">
+                        {insufficient && (
+                          <span className="text-[10px] uppercase tracking-wider text-yellow-400/80 bg-yellow-500/10 border border-yellow-500/20 rounded px-1.5 py-0.5">
+                            low sample
+                          </span>
+                        )}
+                        <div className="text-xs text-neutral-400">{stats.count} trades</div>
                       </div>
                     </div>
-                    <div>
-                      <div className="text-xs text-neutral-400 mb-1">Total P&L</div>
-                      <div
-                        className={`text-base font-bold tabular-nums ${
-                          stats.pnl >= 0 ? "text-emerald-400" : "text-red-400"
-                        }`}
-                      >
-                        ${Number(stats.pnl).toFixed(2)}
+                    <div className="flex items-center gap-6">
+                      <div>
+                        <div className="text-xs text-neutral-400 mb-1">Win Rate</div>
+                        <div className={`text-base font-bold tabular-nums ${insufficient ? "text-neutral-500" : "text-emerald-400"}`}>
+                          {insufficient ? "—" : `${stats.winrate}%`}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-xs text-neutral-400 mb-1">Total P&L</div>
+                        <div
+                          className={`text-base font-bold tabular-nums ${
+                            stats.pnl >= 0 ? "text-emerald-400" : "text-red-400"
+                          }`}
+                        >
+                          ${Number(stats.pnl).toFixed(2)}
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </Card>
         )}
@@ -493,24 +580,43 @@ export default function AnalyticsPage() {
                 <tbody className="divide-y divide-neutral-800">
                   {Object.entries(symbolStats)
                     .sort((a, b) => b[1].pnl - a[1].pnl)
-                    .map(([symbol, stats]) => (
-                      <tr key={symbol} className="hover:bg-[#0f0f0f] transition-colors">
-                        <td className="px-4 py-3 font-bold text-white">{symbol}</td>
-                        <td className="px-4 py-3 text-center tabular-nums text-neutral-300">{stats.count}</td>
-                        <td className="px-4 py-3 text-center tabular-nums text-neutral-300 hidden sm:table-cell">{stats.wins}</td>
-                        <td className="px-4 py-3 text-center">
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
-                            {stats.winrate}%
-                          </span>
-                        </td>
-                        <td className={`px-4 py-3 text-right font-medium tabular-nums hidden md:table-cell ${stats.avg_pnl >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                          ${stats.avg_pnl}
-                        </td>
-                        <td className={`px-4 py-3 text-right font-bold tabular-nums ${stats.pnl >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                          ${Number(stats.pnl).toFixed(2)}
-                        </td>
-                      </tr>
-                    ))}
+                    .map(([symbol, stats]) => {
+                      const insufficient = stats.sufficient === false;
+                      return (
+                        <tr
+                          key={symbol}
+                          className={`hover:bg-[#0f0f0f] transition-colors ${insufficient ? "opacity-60" : ""}`}
+                        >
+                          <td className="px-4 py-3 font-bold text-white">
+                            <div className="flex items-center gap-2">
+                              <span>{symbol}</span>
+                              {insufficient && (
+                                <span className="text-[9px] uppercase tracking-wider text-yellow-400/80 bg-yellow-500/10 border border-yellow-500/20 rounded px-1 py-0.5">
+                                  low n
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-center tabular-nums text-neutral-300">{stats.count}</td>
+                          <td className="px-4 py-3 text-center tabular-nums text-neutral-300 hidden sm:table-cell">{stats.wins}</td>
+                          <td className="px-4 py-3 text-center">
+                            {insufficient ? (
+                              <span className="text-neutral-500 text-xs">—</span>
+                            ) : (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
+                                {stats.winrate}%
+                              </span>
+                            )}
+                          </td>
+                          <td className={`px-4 py-3 text-right font-medium tabular-nums hidden md:table-cell ${insufficient ? "text-neutral-500" : stats.avg_pnl >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                            {insufficient ? "—" : `$${stats.avg_pnl}`}
+                          </td>
+                          <td className={`px-4 py-3 text-right font-bold tabular-nums ${stats.pnl >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                            ${Number(stats.pnl).toFixed(2)}
+                          </td>
+                        </tr>
+                      );
+                    })}
                 </tbody>
               </table>
             </div>

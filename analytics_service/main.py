@@ -59,6 +59,40 @@ _TIME_FILTER_CLAUSES = {
 def _time_filter_clause(time_filter: str) -> str:
     return _TIME_FILTER_CLAUSES.get(time_filter, "")
 
+
+# Minimum trade counts required for each metric to be statistically meaningful.
+# Below these thresholds, the frontend renders "not enough data yet" states
+# instead of misleading numbers.
+_METRIC_REQUIREMENTS = {
+    "win_rate":         20,
+    "profit_factor":    30,
+    "expectancy":       20,
+    "sharpe_ratio":     20,
+    "sortino_ratio":    20,
+    "calmar_ratio":     30,
+    "max_drawdown":     10,
+    "streaks":          15,
+    "r_multiple":       15,
+    "strategy_slice":    5,
+    "symbol_slice":      5,
+    "session_slice":     5,
+    "hourly_slice":      5,
+    "equity_curve":     10,
+}
+
+
+def _build_meta(total_trades: int) -> dict:
+    """Per-metric sufficiency flags for the frontend to gate rendering."""
+    return {
+        name: {
+            "sufficient": total_trades >= required,
+            "required": required,
+            "actual": total_trades,
+            "shortfall": max(0, required - total_trades),
+        }
+        for name, required in _METRIC_REQUIREMENTS.items()
+    }
+
 def calculate_advanced_metrics(trades_data):
     """Calculate advanced trading metrics"""
     if not trades_data:
@@ -249,7 +283,11 @@ def get_overall_stats(time_filter: str = "all"):
     conn.close()
 
     if not trades:
-        return {"message": "No trades available"}
+        return {
+            "message": "No trades available",
+            "total_trades": 0,
+            "_meta": _build_meta(0),
+        }
 
     # Convert to structured list
     data = [
@@ -316,6 +354,13 @@ def get_overall_stats(time_filter: str = "all"):
         s["winrate"] = round((s["wins"] / s["count"]) * 100, 2)
         s["avg_pnl"] = round(s["pnl"] / s["count"], 2)
 
+    # Flag under-sampled strategy slices so the frontend can show a shortfall hint.
+    strategy_min = _METRIC_REQUIREMENTS["strategy_slice"]
+    for sid in strategy_perf:
+        s = strategy_perf[sid]
+        s["sufficient"] = s["count"] >= strategy_min
+        s["required"] = strategy_min
+
     # Calculate advanced metrics
     advanced_metrics = calculate_advanced_metrics(data)
 
@@ -330,7 +375,8 @@ def get_overall_stats(time_filter: str = "all"):
         "most_traded_symbol": most_traded_symbol,
         "most_successful_session": most_successful_session,
         "strategy_performance": strategy_perf,
-        "advanced_metrics": advanced_metrics
+        "advanced_metrics": advanced_metrics,
+        "_meta": _build_meta(total_trades),
     }
 
 @app.get("/stats/session")
@@ -374,9 +420,12 @@ def get_session_stats(time_filter: str = "all"):
         if pnl > 0:
             stats[session]["wins"] += 1
 
+    required = _METRIC_REQUIREMENTS["session_slice"]
     for s in stats.values():
         s["winrate"] = round((s["wins"] / s["count"]) * 100, 2)
         s["avg_pnl"] = round(s["pnl"] / s["count"], 2)
+        s["sufficient"] = s["count"] >= required
+        s["required"] = required
 
     return stats
 
@@ -404,9 +453,12 @@ def get_symbol_stats(time_filter: str = "all"):
         if pnl > 0:
             stats[symbol]["wins"] += 1
 
+    required = _METRIC_REQUIREMENTS["symbol_slice"]
     for s in stats.values():
         s["winrate"] = round((s["wins"] / s["count"]) * 100, 2)
         s["avg_pnl"] = round(s["pnl"] / s["count"], 2)
+        s["sufficient"] = s["count"] >= required
+        s["required"] = required
 
     return stats
 
@@ -464,8 +516,11 @@ def get_hourly_stats(time_filter: str = "all"):
         except (ValueError, TypeError, IndexError):
             continue
 
+    required = _METRIC_REQUIREMENTS["hourly_slice"]
     for h in hourly.values():
         h["winrate"] = round((h["wins"] / h["count"]) * 100, 2) if h["count"] > 0 else 0
         h["avg_pnl"] = round(h["pnl"] / h["count"], 2) if h["count"] > 0 else 0
+        h["sufficient"] = h["count"] >= required
+        h["required"] = required
 
     return hourly
