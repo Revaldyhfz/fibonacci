@@ -4,6 +4,7 @@ from .views import CryptoAssetViewSet, StrategyViewSet, TradeViewSet
 from .health import health_check, readiness_check, liveness_check
 from .auth_views import me, admin_users, admin_overview
 from .registration_views import register
+from .google_auth_views import google_login
 
 router = DefaultRouter()
 router.register(r'strategies', StrategyViewSet, basename='strategy')
@@ -18,6 +19,7 @@ urlpatterns = [
     # Auth-adjacent
     path('auth/me/', me, name='auth-me'),
     path('auth/register/', register, name='auth-register'),
+    path('auth/google/', google_login, name='auth-google'),
 
     # Admin-only
     path('admin/users/', admin_users, name='admin-users'),

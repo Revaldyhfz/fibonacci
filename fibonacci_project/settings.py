@@ -175,6 +175,10 @@ SIMPLE_JWT = {
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
 }
 
+# OAuth — Google Identity Services. The client ID is the 'audience' that every
+# ID token we accept must be minted for. Empty string = Google sign-in disabled.
+GOOGLE_OAUTH_CLIENT_ID = os.getenv('GOOGLE_OAUTH_CLIENT_ID', '')
+
 
 # Production-only security headers. Gated on DEBUG=False so dev isn't affected.
 if not DEBUG:

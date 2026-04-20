@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { Input } from "../components/ui/Input";
 import Button from "../components/ui/Button";
+import GoogleSignInButton from "../components/auth/GoogleSignInButton";
 import { useToast } from "../context/ToastContext";
 
 export default function RegisterPage() {
@@ -121,6 +122,13 @@ export default function RegisterPage() {
               {loading ? "Creating account…" : "Create account"}
             </Button>
           </form>
+
+          <div className="mt-6">
+            <GoogleSignInButton
+              onError={(msg) => setErrors({ form: msg })}
+              onBusy={setLoading}
+            />
+          </div>
 
           <p className="mt-6 pt-6 border-t border-neutral-800 text-center text-sm text-neutral-400">
             Already registered?{" "}
