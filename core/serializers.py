@@ -36,7 +36,11 @@ class TradeSerializer(serializers.ModelSerializer):
 class CryptoAssetSerializer(serializers.ModelSerializer):
     class Meta:
         model = CryptoAsset
-        fields = ['id', 'symbol', 'coin_id', 'amount', 'purchase_price', 'purchase_date', 'notes', 'created_at', 'updated_at']
+        fields = [
+            'id', 'symbol', 'coin_id', 'asset_type', 'market',
+            'amount', 'purchase_price', 'purchase_date', 'notes',
+            'created_at', 'updated_at',
+        ]
         read_only_fields = ['id', 'created_at', 'updated_at']
 
     def create(self, validated_data):
