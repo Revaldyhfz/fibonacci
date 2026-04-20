@@ -4,7 +4,8 @@ import Card, { Stat } from "../components/ui/Card";
 import Button from "../components/ui/Button";
 import Modal from "../components/ui/Modal";
 import Spinner from "../components/ui/Spinner";
-import { Input, Select, Textarea } from "../components/ui/Input";
+import { Input, Textarea } from "../components/ui/Input";
+import TradeFormModal from "../components/trades/TradeFormModal";
 import { useToast } from "../context/ToastContext";
 
 const EMPTY_TRADE = {
@@ -68,7 +69,7 @@ export default function TradesPage() {
   const [submitting, setSubmitting] = useState(false);
   const [strategySaving, setStrategySaving] = useState(false);
 
-  const [form, setForm] = useState(EMPTY_TRADE);
+  const [addModalInitial, setAddModalInitial] = useState(EMPTY_TRADE);
   const [strategyForm, setStrategyForm] = useState(EMPTY_STRATEGY);
 
   const loadTrades = useCallback(async () => {
@@ -116,29 +117,22 @@ export default function TradesPage() {
     return { total: entries.length, pnl, wins, losses };
   }, [trades, currentDate]);
 
-  const handleChange = (e) =>
-    setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
-
   const openAddModal = (dayKey = null) => {
     setSelectedDay(dayKey);
-    setForm({ ...EMPTY_TRADE, trade_date: dayKey ? `${dayKey}T12:00` : "" });
+    setAddModalInitial({ ...EMPTY_TRADE, trade_date: dayKey ? `${dayKey}T12:00` : "" });
     setAddModalOpen(true);
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleAddSubmit = async (payload) => {
     setSubmitting(true);
     try {
-      const payload = {
-        ...form,
-        strategy: form.strategy === "" ? null : form.strategy,
-        close_date: form.close_date || null,
-        exit_price: form.exit_price || null,
-        trade_date: form.trade_date || (selectedDay ? `${selectedDay}T12:00:00` : ""),
+      const finalPayload = {
+        ...payload,
+        trade_date: payload.trade_date || (selectedDay ? `${selectedDay}T12:00:00` : ""),
       };
       const res = await authedFetch("/api/trades/", {
         method: "POST",
-        body: JSON.stringify(payload),
+        body: JSON.stringify(finalPayload),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -149,7 +143,6 @@ export default function TradesPage() {
       }
       toast.success("Trade added");
       setAddModalOpen(false);
-      setForm(EMPTY_TRADE);
       await loadTrades();
     } catch (err) {
       toast.error(err.message || "Couldn't add trade");
@@ -188,15 +181,10 @@ export default function TradesPage() {
           : "Failed to save strategy";
         throw new Error(msg);
       }
-      const created = await res.json();
       toast.success("Strategy created");
       setStrategyModalOpen(false);
       setStrategyForm(EMPTY_STRATEGY);
       await loadStrategies();
-      // Pre-select the newly created strategy if the trade modal is open.
-      if (addModalOpen && created?.id) {
-        setForm((f) => ({ ...f, strategy: String(created.id) }));
-      }
     } catch (err) {
       toast.error(err.message || "Couldn't save strategy");
     } finally {
@@ -480,141 +468,18 @@ export default function TradesPage() {
         )}
       </Modal>
 
-      {/* Add trade modal */}
-      <Modal
+      <TradeFormModal
         open={addModalOpen}
         onClose={() => setAddModalOpen(false)}
-        title="Add Trade"
-        footer={
-          <>
-            <Button variant="ghost" onClick={() => setAddModalOpen(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" form="add-trade-form" loading={submitting}>
-              {submitting ? "Saving…" : "Save Trade"}
-            </Button>
-          </>
-        }
-      >
-        <form id="add-trade-form" onSubmit={handleSubmit} className="grid gap-3 sm:grid-cols-2">
-          <Input
-            label="Symbol"
-            name="symbol"
-            value={form.symbol}
-            onChange={handleChange}
-            placeholder="EURUSD"
-            required
-          />
-          <Select
-            label="Direction"
-            name="direction"
-            value={form.direction}
-            onChange={handleChange}
-          >
-            <option value="LONG">Long (Buy)</option>
-            <option value="SHORT">Short (Sell)</option>
-          </Select>
-          <div className="sm:col-span-2">
-            <label className="block text-sm font-medium text-neutral-300 mb-1">
-              Strategy
-            </label>
-            <div className="flex gap-2">
-              <select
-                name="strategy"
-                value={form.strategy}
-                onChange={handleChange}
-                className="flex-1 px-3 py-2 bg-[#0a0a0a] border border-neutral-700 rounded-lg text-white text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-              >
-                <option value="">None</option>
-                {strategies.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-              <Button
-                variant="secondary"
-                size="sm"
-                type="button"
-                onClick={() => {
-                  setStrategyForm(EMPTY_STRATEGY);
-                  setStrategyModalOpen(true);
-                }}
-              >
-                + New
-              </Button>
-            </div>
-          </div>
-          <Input
-            label="Entry Date & Time"
-            type="datetime-local"
-            name="trade_date"
-            value={form.trade_date}
-            onChange={handleChange}
-            required
-          />
-          <Input
-            label="Exit Date & Time"
-            type="datetime-local"
-            name="close_date"
-            value={form.close_date}
-            onChange={handleChange}
-          />
-          <Input
-            label="Entry Price"
-            type="number"
-            step="0.0001"
-            name="entry_price"
-            value={form.entry_price}
-            onChange={handleChange}
-            required
-          />
-          <Input
-            label="Exit Price"
-            type="number"
-            step="0.0001"
-            name="exit_price"
-            value={form.exit_price}
-            onChange={handleChange}
-          />
-          <Input
-            label="Position Size"
-            type="number"
-            step="0.0001"
-            name="position_size"
-            value={form.position_size}
-            onChange={handleChange}
-            required
-          />
-          <Input
-            label="Fees"
-            type="number"
-            step="0.01"
-            name="fees"
-            value={form.fees}
-            onChange={handleChange}
-          />
-          <div className="sm:col-span-2">
-            <Input
-              label="Tags (comma-separated)"
-              name="tags"
-              value={form.tags}
-              onChange={handleChange}
-              placeholder="breakout, london-session"
-            />
-          </div>
-          <div className="sm:col-span-2">
-            <Textarea
-              label="Notes"
-              name="notes"
-              rows={3}
-              value={form.notes}
-              onChange={handleChange}
-              placeholder="Setup quality, emotions, mistakes…"
-            />
-          </div>
-        </form>
-      </Modal>
+        onSubmit={handleAddSubmit}
+        strategies={strategies}
+        onNewStrategy={() => {
+          setStrategyForm(EMPTY_STRATEGY);
+          setStrategyModalOpen(true);
+        }}
+        initial={addModalInitial}
+        submitting={submitting}
+      />
 
       {/* New strategy modal */}
       <Modal

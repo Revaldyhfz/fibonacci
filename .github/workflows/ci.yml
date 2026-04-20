@@ -25,12 +25,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run pytest
+      - name: Run pytest (Django + portfolio_service)
         env:
           SECRET_KEY: test-secret-key
           DEBUG: "False"
         run: |
-          python -m pytest core/tests/ --tb=short
+          python -m pytest --tb=short
 
   frontend:
     name: Frontend — Vite build + ESLint

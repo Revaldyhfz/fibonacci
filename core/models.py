@@ -85,13 +85,22 @@ class Trade(models.Model):
     def __str__(self):
         return f"{self.symbol} ({self.trade_date.strftime('%Y-%m-%d')})"
     
-# Add to existing models.py
-
 class CryptoAsset(models.Model):
-    """User's crypto holdings - allows multiple purchases of same asset"""
+    """User's portfolio holdings — crypto (Binance/CoinGecko) or stocks (Yahoo,
+    covering US + IDX + global markets). Name kept for backward compatibility
+    with the /api/crypto-assets/ URL; the model now supports both asset types.
+    Allows multiple purchases of the same asset (lot tracking)."""
+
+    ASSET_TYPE_CHOICES = [
+        ('crypto', 'Crypto'),
+        ('stock', 'Stock'),
+    ]
+
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='crypto_assets')
-    symbol = models.CharField(max_length=20)  # BTC, ETH, SOL
-    coin_id = models.CharField(max_length=100, default='bitcoin')  # CoinGecko ID
+    symbol = models.CharField(max_length=20)  # BTC, AAPL, BBCA
+    coin_id = models.CharField(max_length=100, default='bitcoin')  # Binance pair, CoinGecko id, or Yahoo ticker (BBCA.JK)
+    asset_type = models.CharField(max_length=10, choices=ASSET_TYPE_CHOICES, default='crypto')
+    market = models.CharField(max_length=10, blank=True, default='')  # 'US', 'ID', 'JP', 'crypto' — informational
     amount = models.DecimalField(max_digits=20, decimal_places=8)
     purchase_price = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     purchase_date = models.DateTimeField(null=True, blank=True)
@@ -100,11 +109,12 @@ class CryptoAsset(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ['-purchase_date', '-created_at']  # Most recent first
+        ordering = ['-purchase_date', '-created_at']
         indexes = [
             models.Index(fields=['user', 'symbol']),
+            models.Index(fields=['user', 'asset_type']),
         ]
 
     def __str__(self):
         date_str = self.purchase_date.strftime('%Y-%m-%d') if self.purchase_date else 'Unknown'
-        return f"{self.user.username} - {self.amount} {self.symbol} ({date_str})"
+        return f"{self.user.username} - {self.amount} {self.symbol} [{self.asset_type}] ({date_str})"

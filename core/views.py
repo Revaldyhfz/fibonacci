@@ -109,47 +109,53 @@ class CryptoAssetViewSet(_UserScopedModelViewSet):
         """Get complete portfolio with live prices - aggregates multiple purchases"""
         assets = self.get_queryset()
 
-        # Group assets by symbol for aggregation
+        # Group by (asset_type, symbol) so stock AAPL and crypto AAPL don't collide
         from collections import defaultdict
         from decimal import Decimal
 
         grouped_assets = defaultdict(lambda: {
             'symbol': '',
             'coin_id': '',
+            'asset_type': 'crypto',
+            'market': '',
             'total_amount': Decimal('0'),
             'total_cost': Decimal('0'),
             'purchases': []
         })
 
         for asset in assets:
-            key = asset.symbol
-            grouped_assets[key]['symbol'] = asset.symbol
-            grouped_assets[key]['coin_id'] = asset.coin_id
-            grouped_assets[key]['total_amount'] += asset.amount
+            key = (asset.asset_type, asset.symbol)
+            bucket = grouped_assets[key]
+            bucket['symbol'] = asset.symbol
+            bucket['coin_id'] = asset.coin_id
+            bucket['asset_type'] = asset.asset_type
+            bucket['market'] = asset.market
+            bucket['total_amount'] += asset.amount
 
             purchase = {
                 'id': asset.id,
                 'amount': float(asset.amount),
                 'purchase_price': float(asset.purchase_price) if asset.purchase_price else None,
                 'purchase_date': asset.purchase_date.isoformat() if asset.purchase_date else None,
-                'notes': asset.notes
+                'notes': asset.notes,
             }
 
             if asset.purchase_price:
                 cost = asset.amount * asset.purchase_price
-                grouped_assets[key]['total_cost'] += cost
+                bucket['total_cost'] += cost
                 purchase['cost'] = float(cost)
 
-            grouped_assets[key]['purchases'].append(purchase)
+            bucket['purchases'].append(purchase)
 
-        # Prepare data for portfolio service
         asset_list = [
             {
                 'symbol': data['symbol'],
                 'amount': float(data['total_amount']),
                 'coin_id': data['coin_id'],
+                'asset_type': data['asset_type'],
+                'market': data['market'],
                 'purchase_price': float(data['total_cost'] / data['total_amount']) if data['total_amount'] > 0 and data['total_cost'] > 0 else None,
-                'purchases': data['purchases']  # Include individual purchases
+                'purchases': data['purchases'],
             }
             for data in grouped_assets.values()
         ]
