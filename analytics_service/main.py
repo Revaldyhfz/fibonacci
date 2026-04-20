@@ -45,6 +45,20 @@ def get_db_connection():
         host=DB_HOST, port=DB_PORT
     )
 
+
+# Closed-dict lookup for time-filter SQL. Values are hardcoded constants — user
+# input is only the KEY, never the substituted SQL, so injection is impossible.
+_TIME_FILTER_CLAUSES = {
+    "day":   "AND trade_date >= CURRENT_DATE",
+    "week":  "AND trade_date >= CURRENT_DATE - INTERVAL '7 days'",
+    "month": "AND trade_date >= CURRENT_DATE - INTERVAL '30 days'",
+    "all":   "",
+}
+
+
+def _time_filter_clause(time_filter: str) -> str:
+    return _TIME_FILTER_CLAUSES.get(time_filter, "")
+
 def calculate_advanced_metrics(trades_data):
     """Calculate advanced trading metrics"""
     if not trades_data:
@@ -219,15 +233,8 @@ def get_overall_stats(time_filter: str = "all"):
     conn = get_db_connection()
     cur = conn.cursor()
     
-    # Build date filter
-    date_filter = ""
-    if time_filter == "day":
-        date_filter = "AND trade_date >= CURRENT_DATE"
-    elif time_filter == "week":
-        date_filter = "AND trade_date >= CURRENT_DATE - INTERVAL '7 days'"
-    elif time_filter == "month":
-        date_filter = "AND trade_date >= CURRENT_DATE - INTERVAL '30 days'"
-    
+    date_filter = _time_filter_clause(time_filter)
+
     cur.execute(f"""
         SELECT 
             symbol, strategy_id, pnl, pnl_percent, trade_date, time,
@@ -332,15 +339,8 @@ def get_session_stats(time_filter: str = "all"):
     conn = get_db_connection()
     cur = conn.cursor()
     
-    # Build date filter
-    date_filter = ""
-    if time_filter == "day":
-        date_filter = "AND trade_date >= CURRENT_DATE"
-    elif time_filter == "week":
-        date_filter = "AND trade_date >= CURRENT_DATE - INTERVAL '7 days'"
-    elif time_filter == "month":
-        date_filter = "AND trade_date >= CURRENT_DATE - INTERVAL '30 days'"
-    
+    date_filter = _time_filter_clause(time_filter)
+
     cur.execute(f"""
         SELECT pnl, time FROM core_trade WHERE pnl IS NOT NULL {date_filter};
     """)
@@ -386,15 +386,8 @@ def get_symbol_stats(time_filter: str = "all"):
     conn = get_db_connection()
     cur = conn.cursor()
     
-    # Build date filter
-    date_filter = ""
-    if time_filter == "day":
-        date_filter = "AND trade_date >= CURRENT_DATE"
-    elif time_filter == "week":
-        date_filter = "AND trade_date >= CURRENT_DATE - INTERVAL '7 days'"
-    elif time_filter == "month":
-        date_filter = "AND trade_date >= CURRENT_DATE - INTERVAL '30 days'"
-    
+    date_filter = _time_filter_clause(time_filter)
+
     cur.execute(f"""
         SELECT symbol, pnl FROM core_trade WHERE pnl IS NOT NULL {date_filter};
     """)
@@ -449,15 +442,8 @@ def get_hourly_stats(time_filter: str = "all"):
     conn = get_db_connection()
     cur = conn.cursor()
     
-    # Build date filter
-    date_filter = ""
-    if time_filter == "day":
-        date_filter = "AND trade_date >= CURRENT_DATE"
-    elif time_filter == "week":
-        date_filter = "AND trade_date >= CURRENT_DATE - INTERVAL '7 days'"
-    elif time_filter == "month":
-        date_filter = "AND trade_date >= CURRENT_DATE - INTERVAL '30 days'"
-    
+    date_filter = _time_filter_clause(time_filter)
+
     cur.execute(f"""
         SELECT time, pnl FROM core_trade WHERE pnl IS NOT NULL AND time IS NOT NULL {date_filter};
     """)
