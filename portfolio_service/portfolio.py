@@ -6,6 +6,7 @@ import logging
 from datetime import datetime
 from typing import Dict, List, Optional
 
+from . import logos
 from .models import Asset, PortfolioSummary
 from .pricing import fetch_history, get_price
 
@@ -30,6 +31,8 @@ async def calculate(assets: List[Asset]) -> PortfolioSummary:
     enriched: List[dict] = []
 
     for asset, price in zip(assets, price_results):
+        logo_url = logos.resolve(asset.symbol, asset.asset_type, asset.market)
+
         if isinstance(price, Exception) or price is None:
             enriched.append({
                 "symbol": asset.symbol.upper(),
@@ -37,6 +40,7 @@ async def calculate(assets: List[Asset]) -> PortfolioSummary:
                 "asset_type": asset.asset_type,
                 "market": asset.market,
                 "amount": asset.amount,
+                "logo_url": logo_url,
                 "error": "Price unavailable",
                 "current_price": None,
                 "current_value": None,
@@ -61,6 +65,7 @@ async def calculate(assets: List[Asset]) -> PortfolioSummary:
             "asset_type": asset.asset_type,
             "market": asset.market,
             "amount": asset.amount,
+            "logo_url": logo_url,
             "current_price": round(current_price, 6),
             "current_value": round(current_value, 2),
             "purchase_price": asset.purchase_price,

@@ -1,4 +1,5 @@
 import { Fragment, useState } from "react";
+import AssetLogo from "./AssetLogo";
 import MarketBadge from "./MarketBadge";
 
 function formatAmount(n, assetType) {
@@ -100,6 +101,7 @@ export default function AssetsTable({
                         ) : (
                           <span className="w-3 h-3 inline-block" />
                         )}
+                        <AssetLogo symbol={asset.symbol} src={asset.logo_url} size={30} />
                         <div className="min-w-0">
                           <div className="flex items-center gap-2">
                             <span className="font-semibold text-white">{asset.symbol}</span>

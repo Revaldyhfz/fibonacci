@@ -28,6 +28,7 @@ class PriceData(BaseModel):
     symbol: str
     currency: str = "USD"  # native currency before USD conversion
     native_price: Optional[float] = None
+    logo_url: Optional[str] = None
 
 
 class PortfolioSummary(BaseModel):
@@ -46,3 +47,4 @@ class SearchResult(BaseModel):
     market: Optional[str] = None
     exchange: Optional[str] = None
     source: str
+    logo_url: Optional[str] = None

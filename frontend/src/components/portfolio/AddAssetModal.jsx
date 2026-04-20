@@ -3,6 +3,7 @@ import Modal from "../ui/Modal";
 import Button from "../ui/Button";
 import { Input, Textarea } from "../ui/Input";
 import Spinner from "../ui/Spinner";
+import AssetLogo from "./AssetLogo";
 import MarketBadge from "./MarketBadge";
 import useDebounce from "../../hooks/useDebounce";
 
@@ -266,6 +267,7 @@ export default function AddAssetModal({ open, onClose, onSubmit, authHeaders }) 
                             : "hover:bg-neutral-900",
                         ].join(" ")}
                       >
+                        <AssetLogo symbol={r.symbol} src={r.logo_url} size={28} />
                         <MarketBadge market={r.market} assetType={r.asset_type} />
                         <div className="flex-1 min-w-0">
                           <div className="text-sm font-semibold text-white truncate">
@@ -291,12 +293,15 @@ export default function AddAssetModal({ open, onClose, onSubmit, authHeaders }) 
         {selected && (
           <div className="rounded-xl border border-neutral-800 bg-gradient-to-br from-neutral-900 to-[#0a0a0a] p-4">
             <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-base font-bold text-white">{selected.symbol.toUpperCase()}</span>
-                  <MarketBadge market={selected.market} assetType={selected.asset_type} />
+              <div className="flex items-start gap-3 min-w-0">
+                <AssetLogo symbol={selected.symbol} src={price?.logo_url || selected.logo_url} size={40} />
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-base font-bold text-white">{selected.symbol.toUpperCase()}</span>
+                    <MarketBadge market={selected.market} assetType={selected.asset_type} />
+                  </div>
+                  <div className="text-xs text-neutral-400 truncate">{selected.name}</div>
                 </div>
-                <div className="text-xs text-neutral-400 truncate">{selected.name}</div>
               </div>
               <div className="text-right">
                 {priceLoading && <Spinner size="sm" label="" />}
@@ -328,6 +333,7 @@ export default function AddAssetModal({ open, onClose, onSubmit, authHeaders }) 
           </div>
         )}
         {errors.selected && <p className="text-xs text-red-400">{errors.selected}</p>}
+        {/* close outer flex wrapper for the selected preview header */}
 
         {/* Form fields */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

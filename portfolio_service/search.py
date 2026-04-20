@@ -5,6 +5,7 @@ import asyncio
 import logging
 from typing import List
 
+from . import logos
 from .providers import binance, yahoo
 
 logger = logging.getLogger(__name__)
@@ -35,4 +36,10 @@ async def search(query: str, limit: int = 20) -> List[dict]:
     else:
         logger.warning("Stock search failed: %s", stocks)
 
-    return merged[:limit]
+    results = merged[:limit]
+    for r in results:
+        r.setdefault(
+            "logo_url",
+            logos.resolve(r.get("symbol", ""), r.get("asset_type", ""), r.get("market")),
+        )
+    return results
