@@ -42,6 +42,14 @@ kubectl apply -f k8s/00-namespace.yaml
 echo -e "${GREEN}✓ Namespace created${NC}"
 
 kubectl apply -f k8s/01-configmap.yaml
+
+if [ ! -f k8s/02-secret.yaml ]; then
+    echo "❌ k8s/02-secret.yaml not found."
+    echo "   Generate it first with:"
+    echo "     ./k8s/generate_secret.sh"
+    echo "   (or set DB_PASSWORD / SECRET_KEY / COINGECKO_API_KEY env vars before running)"
+    exit 1
+fi
 kubectl apply -f k8s/02-secret.yaml
 echo -e "${GREEN}✓ ConfigMap and Secret created${NC}"
 

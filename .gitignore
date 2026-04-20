@@ -35,6 +35,9 @@ db.sqlite3-journal
 .env.local
 .env.*.local
 
+# Kubernetes secrets — generated locally, never committed
+k8s/02-secret.yaml
+
 # Virtual Environment
 venv/
 ENV/

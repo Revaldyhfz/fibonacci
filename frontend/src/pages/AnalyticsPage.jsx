@@ -1,9 +1,72 @@
-import { useState, useEffect } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
+import Header from "../components/layout/Header";
+import Card from "../components/ui/Card";
+import Button from "../components/ui/Button";
+import Spinner from "../components/ui/Spinner";
+
+const FILTERS = [
+  { value: "day", label: "Today" },
+  { value: "week", label: "This Week" },
+  { value: "month", label: "This Month" },
+  { value: "all", label: "All Time" },
+];
+
+function metricColor(value, { excellent, good, acceptable }) {
+  if (value == null || Number.isNaN(Number(value))) return "text-neutral-400";
+  const n = Number(value);
+  if (n >= excellent) return "text-emerald-400";
+  if (n >= good) return "text-blue-400";
+  if (n >= acceptable) return "text-yellow-400";
+  return "text-red-400";
+}
+
+const METRIC_HINTS = {
+  sharpe_ratio: (v) =>
+    v === 0
+      ? "Need more trades for calculation"
+      : v >= 2
+        ? "Excellent risk-adjusted returns"
+        : v >= 1
+          ? "Good risk-adjusted returns"
+          : v >= 0
+            ? "Acceptable returns"
+            : "Poor risk-adjusted returns",
+  sortino_ratio: (v) =>
+    v === 0
+      ? "Need more trades for calculation"
+      : v >= 2
+        ? "Excellent downside protection"
+        : v >= 1
+          ? "Good downside protection"
+          : "Needs improvement",
+  profit_factor: (v) =>
+    v === 0
+      ? "No winning or losing trades yet"
+      : v >= 2
+        ? "Strong profit generation"
+        : v >= 1.5
+          ? "Good profit generation"
+          : v >= 1.25
+            ? "Acceptable edge"
+            : "Insufficient edge",
+  calmar_ratio: (v) =>
+    v === 0
+      ? "Need drawdown data for calculation"
+      : v >= 3
+        ? "Excellent return vs drawdown"
+        : v >= 2
+          ? "Good return vs drawdown"
+          : v >= 1
+            ? "Acceptable"
+            : "High drawdown risk",
+};
+
+function authedFetch(url, token) {
+  return fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+}
 
 export default function AnalyticsPage() {
-  const { logout, user } = useAuth();
   const nav = useNavigate();
   const [timeFilter, setTimeFilter] = useState("all");
   const [overallStats, setOverallStats] = useState(null);
@@ -13,495 +76,445 @@ export default function AnalyticsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  useEffect(() => {
-    fetchAnalytics();
-  }, [timeFilter]);
-
-  const fetchAnalytics = async () => {
+  const fetchAnalytics = useCallback(async () => {
     setLoading(true);
     setError(null);
-    
     try {
-      const tokens = JSON.parse(localStorage.getItem("tokens"));
-      if (!tokens || !tokens.access) {
-        throw new Error("No authentication token found");
-      }
-
-      const headers = { Authorization: `Bearer ${tokens.access}` };
-      
-      // Add time_filter query parameter
-      const filterParam = `?time_filter=${timeFilter}`;
-      
-      const [overallRes, sessionsRes, symbolsRes, hourlyRes] = await Promise.all([
-        fetch(`/analytics/stats/overall${filterParam}`, { headers }),
-        fetch(`/analytics/stats/session${filterParam}`, { headers }),
-        fetch(`/analytics/stats/symbol${filterParam}`, { headers }),
-        fetch(`/analytics/stats/hourly${filterParam}`, { headers })
+      const tokens = JSON.parse(localStorage.getItem("tokens") || "null");
+      if (!tokens?.access) throw new Error("Not authenticated");
+      const qs = `?time_filter=${timeFilter}`;
+      const [o, s, y, h] = await Promise.all([
+        authedFetch(`/analytics/stats/overall${qs}`, tokens.access),
+        authedFetch(`/analytics/stats/session${qs}`, tokens.access),
+        authedFetch(`/analytics/stats/symbol${qs}`, tokens.access),
+        authedFetch(`/analytics/stats/hourly${qs}`, tokens.access),
       ]);
-
-      if (!overallRes.ok || !sessionsRes.ok || !symbolsRes.ok || !hourlyRes.ok) {
-        throw new Error(`Failed to fetch analytics`);
+      if (!o.ok || !s.ok || !y.ok || !h.ok) {
+        throw new Error("Failed to fetch analytics");
       }
-
       const [overall, sessions, symbols, hourly] = await Promise.all([
-        overallRes.json(),
-        sessionsRes.json(),
-        symbolsRes.json(),
-        hourlyRes.json()
+        o.json(),
+        s.json(),
+        y.json(),
+        h.json(),
       ]);
-
       setOverallStats(overall);
       setSessionStats(sessions);
       setSymbolStats(symbols);
       setHourlyStats(hourly);
-    } catch (error) {
-      console.error("Failed to fetch analytics:", error);
-      setError(error.message);
+    } catch (err) {
+      setError(err.message || "Analytics error");
     } finally {
       setLoading(false);
     }
-  };
+  }, [timeFilter]);
 
-  const getMetricColor = (value, thresholds) => {
-    if (value >= thresholds.excellent) return 'text-emerald-500';
-    if (value >= thresholds.good) return 'text-blue-500';
-    if (value >= thresholds.acceptable) return 'text-yellow-500';
-    return 'text-red-500';
-  };
+  useEffect(() => {
+    fetchAnalytics();
+  }, [fetchAnalytics]);
 
-  const getMetricDescription = (metric, value) => {
-    const descriptions = {
-      sharpe_ratio: {
-        thresholds: { excellent: 2, good: 1, acceptable: 0 },
-        desc: value === 0 ? 'Need more trades for calculation' :
-              value >= 2 ? 'Excellent risk-adjusted returns' : 
-              value >= 1 ? 'Good risk-adjusted returns' : 
-              value >= 0 ? 'Acceptable returns' : 'Poor risk-adjusted returns'
-      },
-      sortino_ratio: {
-        thresholds: { excellent: 2, good: 1, acceptable: 0 },
-        desc: value === 0 ? 'Need more trades for calculation' :
-              value >= 2 ? 'Excellent downside protection' : 
-              value >= 1 ? 'Good downside protection' : 
-              'Needs improvement'
-      },
-      profit_factor: {
-        thresholds: { excellent: 2, good: 1.5, acceptable: 1.25 },
-        desc: value === 0 ? 'No winning or losing trades yet' :
-              value >= 2 ? 'Strong profit generation' : 
-              value >= 1.5 ? 'Good profit generation' : 
-              value >= 1.25 ? 'Acceptable edge' : 'Insufficient edge'
-      },
-      calmar_ratio: {
-        thresholds: { excellent: 3, good: 2, acceptable: 1 },
-        desc: value === 0 ? 'Need drawdown data for calculation' :
-              value >= 3 ? 'Excellent return vs drawdown' : 
-              value >= 2 ? 'Good return vs drawdown' : 
-              value >= 1 ? 'Acceptable' : 'High drawdown risk'
-      }
-    };
-    return descriptions[metric] || { thresholds: { excellent: 1, good: 0.5, acceptable: 0 }, desc: '' };
-  };
+  const advanced = overallStats?.advanced_metrics || {};
+  const hasData = !!overallStats?.total_trades && overallStats.total_trades > 0;
+
+  const hourlyBins = useMemo(() => {
+    if (!hourlyStats) return [];
+    const bins = new Array(24).fill(null).map((_, hour) => ({
+      hour,
+      count: 0,
+      pnl: 0,
+      winrate: 0,
+    }));
+    for (const [hourKey, stats] of Object.entries(hourlyStats)) {
+      const h = parseInt(hourKey, 10);
+      if (Number.isNaN(h) || h < 0 || h > 23) continue;
+      bins[h] = {
+        hour: h,
+        count: stats.count ?? 0,
+        pnl: Number(stats.pnl ?? 0),
+        winrate: Number(stats.winrate ?? 0),
+      };
+    }
+    return bins;
+  }, [hourlyStats]);
+
+  const maxAbsPnl = useMemo(
+    () => Math.max(1, ...hourlyBins.map((b) => Math.abs(b.pnl))),
+    [hourlyBins]
+  );
+
+  const emptyState = (
+    <div className="min-h-screen bg-[#0a0a0a]">
+      <Header />
+      <main className="mx-auto max-w-3xl px-4 py-16 text-center">
+        <div className="text-6xl mb-4">📊</div>
+        <h2 className="text-2xl font-bold text-white mb-2">No Trading Data Yet</h2>
+        <p className="text-neutral-400 mb-6">
+          Start adding trades to see professional analytics.
+        </p>
+        <Link to="/trades">
+          <Button>Add your first trade</Button>
+        </Link>
+      </main>
+    </div>
+  );
+
+  const errorState = (
+    <div className="min-h-screen bg-[#0a0a0a]">
+      <Header />
+      <main className="mx-auto max-w-lg px-4 py-16">
+        <Card title="Analytics Error" subtitle="Something went wrong">
+          <p className="text-neutral-300 mb-4 text-sm">{error}</p>
+          <div className="flex gap-2">
+            <Button onClick={fetchAnalytics}>Retry</Button>
+            <Button variant="secondary" onClick={() => nav("/dashboard")}>
+              Back to Dashboard
+            </Button>
+          </div>
+        </Card>
+      </main>
+    </div>
+  );
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
-        <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-neutral-600 border-t-blue-500 mb-4"></div>
-          <div className="text-neutral-400">Loading analytics...</div>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
-        <div className="bg-[#141414] border border-red-500/30 rounded-xl p-8 max-w-md">
-          <div className="text-red-500 text-xl font-bold mb-4">⚠️ Analytics Error</div>
-          <p className="text-neutral-300 mb-4">{error}</p>
-          <div className="flex gap-3">
-            <button
-              onClick={fetchAnalytics}
-              className="flex-1 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors"
-            >
-              Retry
-            </button>
-            <button
-              onClick={() => nav("/dashboard")}
-              className="flex-1 px-4 py-2 bg-neutral-700 hover:bg-neutral-600 text-white rounded-lg transition-colors"
-            >
-              Dashboard
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  const hasNoData = !overallStats?.total_trades || overallStats.total_trades === 0;
-
-  if (hasNoData) {
-    return (
       <div className="min-h-screen bg-[#0a0a0a]">
-        <header className="sticky top-0 z-50 border-b border-neutral-800 bg-[#141414]/95 backdrop-blur-sm shadow-lg">
-          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-            <div className="flex h-16 items-center justify-between">
-              <div className="flex items-center gap-8">
-                <h1 className="text-xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-                  Trading Journal
-                </h1>
-                <nav className="hidden md:flex gap-6">
-                  <Link to="/dashboard" className="text-sm text-neutral-400 hover:text-white transition-colors">Dashboard</Link>
-                  <Link to="/trades" className="text-sm text-neutral-400 hover:text-white transition-colors">Trades</Link>
-                  <Link to="/analytics" className="text-sm font-medium text-white">Analytics</Link>
-                </nav>
-              </div>
-              <div className="flex items-center gap-4">
-                <div className="text-sm text-neutral-400">
-                  <span className="hidden sm:inline">Welcome, </span>
-                  <span className="font-medium text-white">{user?.username || 'Trader'}</span>
-                </div>
-                <button onClick={() => { logout(); nav("/"); }} className="text-sm px-3 py-1.5 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-lg transition-colors">
-                  Logout
-                </button>
-              </div>
-            </div>
-          </div>
-        </header>
-        
-        <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-          <div className="flex flex-col items-center justify-center min-h-[60vh]">
-            <div className="text-6xl mb-4">📊</div>
-            <h2 className="text-2xl font-bold text-white mb-2">No Trading Data Yet</h2>
-            <p className="text-neutral-400 mb-6 text-center max-w-md">
-              Start adding trades to see detailed analytics and insights about your trading performance.
-            </p>
-            <Link
-              to="/trades"
-              className="px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-medium rounded-lg shadow-lg shadow-blue-500/20 transition-all"
-            >
-              Add Your First Trade
-            </Link>
-          </div>
+        <Header />
+        <main className="mx-auto max-w-7xl px-4 py-16">
+          <Spinner label="Loading analytics…" />
         </main>
       </div>
     );
   }
-
-  const advanced = overallStats?.advanced_metrics || {};
+  if (error) return errorState;
+  if (!hasData) return emptyState;
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] pb-8">
-      <header className="sticky top-0 z-50 border-b border-neutral-800 bg-[#141414]/95 backdrop-blur-sm shadow-lg">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="flex h-16 items-center justify-between">
-            <div className="flex items-center gap-8">
-              <h1 className="text-xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-                Trading Journal
-              </h1>
-              <nav className="hidden md:flex gap-6">
-                <Link to="/dashboard" className="text-sm text-neutral-400 hover:text-white transition-colors">Dashboard</Link>
-                <Link to="/trades" className="text-sm text-neutral-400 hover:text-white transition-colors">Trades</Link>
-                <Link to="/analytics" className="text-sm font-medium text-white">Analytics</Link>
-                <Link to="/portfolio" className="text-sm text-neutral-400 hover:text-white transition-colors">Portfolio</Link>
+    <div className="min-h-screen bg-[#0a0a0a] pb-12">
+      <Header />
 
-              </nav>
-            </div>
-            <div className="flex items-center gap-4">
-              <div className="text-sm text-neutral-400">
-                <span className="hidden sm:inline">Welcome, </span>
-                <span className="font-medium text-white">{user?.username || 'Trader'}</span>
-              </div>
-              <button onClick={() => { logout(); nav("/"); }} className="text-sm px-3 py-1.5 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-lg transition-colors">
-                Logout
-              </button>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between my-6 gap-4">
+      <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
           <div>
-            <h2 className="text-2xl sm:text-3xl font-bold text-white mb-1">Professional Analytics</h2>
+            <h1 className="text-2xl sm:text-3xl font-bold text-white mb-1">
+              Professional Analytics
+            </h1>
             <p className="text-sm text-neutral-400">
               Risk-adjusted performance metrics
-              {timeFilter !== 'all' && ` - ${timeFilter === 'day' ? 'Today' : timeFilter === 'week' ? 'This Week' : 'This Month'}`}
+              {timeFilter !== "all" &&
+                ` · ${FILTERS.find((f) => f.value === timeFilter)?.label}`}
             </p>
           </div>
-          <div className="flex gap-2 flex-wrap">
-            {[
-              { value: "day", label: "Today" },
-              { value: "week", label: "This Week" },
-              { value: "month", label: "This Month" },
-              { value: "all", label: "All Time" }
-            ].map((filter) => (
+          <div className="flex gap-2 flex-wrap w-full sm:w-auto">
+            {FILTERS.map((f) => (
               <button
-                key={filter.value}
-                onClick={() => setTimeFilter(filter.value)}
+                key={f.value}
+                onClick={() => setTimeFilter(f.value)}
                 className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                  timeFilter === filter.value
+                  timeFilter === f.value
                     ? "bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-lg shadow-blue-500/20"
                     : "bg-[#141414] border border-neutral-700 text-neutral-300 hover:border-neutral-600"
                 }`}
               >
-                {filter.label}
+                {f.label}
               </button>
             ))}
           </div>
         </div>
 
-        {/* Risk-Adjusted Performance Metrics */}
-        {overallStats && overallStats.total_trades < 10 && (
-          <div className="mb-4 bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4 flex items-start gap-3">
-            <svg className="w-5 h-5 text-yellow-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <div className="flex-1">
-              <div className="text-sm font-medium text-yellow-400 mb-1">Limited Data Notice</div>
-              <div className="text-xs text-neutral-300">
-                You have {overallStats.total_trades} trade{overallStats.total_trades !== 1 ? 's' : ''} in this period. 
-                Some advanced metrics require at least 10-20 trades for meaningful statistical analysis.
-                {timeFilter !== 'all' && ' Try viewing "All Time" for more comprehensive analytics.'}
+        {overallStats.total_trades < 10 && (
+          <Card className="mb-6 bg-yellow-500/5 border-yellow-500/30">
+            <div className="flex items-start gap-3">
+              <svg className="w-5 h-5 text-yellow-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <div>
+                <div className="text-sm font-medium text-yellow-300 mb-1">
+                  Limited data
+                </div>
+                <div className="text-xs text-neutral-300">
+                  You have {overallStats.total_trades} trade
+                  {overallStats.total_trades !== 1 ? "s" : ""} in this period.
+                  Some metrics need at least 10–20 trades to be meaningful.
+                </div>
               </div>
             </div>
-          </div>
+          </Card>
         )}
-        <div className="mb-6 bg-gradient-to-br from-blue-500/10 to-purple-600/10 border border-blue-500/30 rounded-xl p-6">
-          <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
-            <svg className="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-            </svg>
-            Risk-Adjusted Performance
-          </h3>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="bg-[#0a0a0a]/50 backdrop-blur-sm border border-neutral-800 rounded-lg p-4">
-              <div className="text-xs text-neutral-400 mb-1">Sharpe Ratio</div>
-              <div className={`text-3xl font-bold mb-1 ${getMetricColor(advanced.sharpe_ratio, {excellent: 2, good: 1, acceptable: 0})}`}>
-                {advanced.sharpe_ratio || '0.00'}
-              </div>
-              <div className="text-xs text-neutral-500">
-                {getMetricDescription('sharpe_ratio', advanced.sharpe_ratio).desc}
-              </div>
-            </div>
 
-            <div className="bg-[#0a0a0a]/50 backdrop-blur-sm border border-neutral-800 rounded-lg p-4">
-              <div className="text-xs text-neutral-400 mb-1">Sortino Ratio</div>
-              <div className={`text-3xl font-bold mb-1 ${getMetricColor(advanced.sortino_ratio, {excellent: 2, good: 1, acceptable: 0})}`}>
-                {advanced.sortino_ratio || '0.00'}
-              </div>
-              <div className="text-xs text-neutral-500">
-                {getMetricDescription('sortino_ratio', advanced.sortino_ratio).desc}
-              </div>
-            </div>
-
-            <div className="bg-[#0a0a0a]/50 backdrop-blur-sm border border-neutral-800 rounded-lg p-4">
-              <div className="text-xs text-neutral-400 mb-1">Profit Factor</div>
-              <div className={`text-3xl font-bold mb-1 ${getMetricColor(advanced.profit_factor, {excellent: 2, good: 1.5, acceptable: 1.25})}`}>
-                {advanced.profit_factor || '0.00'}
-              </div>
-              <div className="text-xs text-neutral-500">
-                {getMetricDescription('profit_factor', advanced.profit_factor).desc}
-              </div>
-            </div>
-
-            <div className="bg-[#0a0a0a]/50 backdrop-blur-sm border border-neutral-800 rounded-lg p-4">
-              <div className="text-xs text-neutral-400 mb-1">Calmar Ratio</div>
-              <div className={`text-3xl font-bold mb-1 ${getMetricColor(advanced.calmar_ratio, {excellent: 3, good: 2, acceptable: 1})}`}>
-                {advanced.calmar_ratio || '0.00'}
-              </div>
-              <div className="text-xs text-neutral-500">
-                {getMetricDescription('calmar_ratio', advanced.calmar_ratio).desc}
-              </div>
-            </div>
+        <Card
+          title="Risk-Adjusted Performance"
+          className="mb-6 bg-gradient-to-br from-blue-500/10 to-purple-600/10 border-blue-500/30"
+        >
+          <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
+            {[
+              { key: "sharpe_ratio", label: "Sharpe Ratio", thresholds: { excellent: 2, good: 1, acceptable: 0 } },
+              { key: "sortino_ratio", label: "Sortino Ratio", thresholds: { excellent: 2, good: 1, acceptable: 0 } },
+              { key: "profit_factor", label: "Profit Factor", thresholds: { excellent: 2, good: 1.5, acceptable: 1.25 } },
+              { key: "calmar_ratio", label: "Calmar Ratio", thresholds: { excellent: 3, good: 2, acceptable: 1 } },
+            ].map((m) => {
+              const value = Number(advanced[m.key] || 0);
+              return (
+                <div
+                  key={m.key}
+                  className="bg-[#0a0a0a]/70 border border-neutral-800 rounded-lg p-4"
+                >
+                  <div className="text-xs text-neutral-400 mb-1">{m.label}</div>
+                  <div className={`text-2xl sm:text-3xl font-bold mb-1 tabular-nums ${metricColor(value, m.thresholds)}`}>
+                    {value.toFixed(2)}
+                  </div>
+                  <div className="text-xs text-neutral-500 leading-snug">
+                    {METRIC_HINTS[m.key](value)}
+                  </div>
+                </div>
+              );
+            })}
           </div>
-        </div>
+        </Card>
 
-        {/* Drawdown & Risk Metrics */}
         <div className="grid gap-6 lg:grid-cols-2 mb-6">
-          <div className="bg-[#141414] border border-neutral-800 rounded-xl p-6">
-            <h3 className="text-lg font-bold text-white mb-4">Drawdown Analysis</h3>
-            <div className="space-y-4">
+          <Card title="Drawdown Analysis">
+            <div className="space-y-3">
               <div className="flex items-center justify-between p-3 bg-[#0a0a0a] rounded-lg">
                 <div>
                   <div className="text-xs text-neutral-400 mb-1">Maximum Drawdown</div>
-                  <div className="text-2xl font-bold text-red-500">${advanced.max_drawdown || '0.00'}</div>
+                  <div className="text-xl sm:text-2xl font-bold text-red-400 tabular-nums">
+                    ${advanced.max_drawdown || "0.00"}
+                  </div>
                 </div>
                 <div className="text-right">
                   <div className="text-xs text-neutral-400 mb-1">Percentage</div>
-                  <div className="text-2xl font-bold text-red-400">{advanced.max_drawdown_pct || '0.00'}%</div>
+                  <div className="text-xl sm:text-2xl font-bold text-red-400 tabular-nums">
+                    {advanced.max_drawdown_pct || "0.00"}%
+                  </div>
                 </div>
               </div>
               <div className="flex items-center justify-between p-3 bg-[#0a0a0a] rounded-lg">
                 <div className="text-sm text-neutral-300">Recovery Factor</div>
-                <div className={`text-xl font-bold ${advanced.recovery_factor >= 3 ? 'text-emerald-500' : advanced.recovery_factor >= 2 ? 'text-blue-500' : 'text-yellow-500'}`}>
-                  {advanced.recovery_factor || '0.00'}x
+                <div
+                  className={`text-lg sm:text-xl font-bold tabular-nums ${
+                    advanced.recovery_factor >= 3
+                      ? "text-emerald-400"
+                      : advanced.recovery_factor >= 2
+                        ? "text-blue-400"
+                        : "text-yellow-400"
+                  }`}
+                >
+                  {advanced.recovery_factor || "0.00"}x
                 </div>
               </div>
-              <div className="text-xs text-neutral-500 p-3 bg-neutral-900/30 rounded-lg">
-                💡 A 50% loss requires a 100% gain to recover. Keep drawdowns under 20% for optimal psychological management.
-              </div>
+              <p className="text-xs text-neutral-500 p-3 bg-neutral-900/30 rounded-lg">
+                A 50% loss requires a 100% gain to recover. Keep drawdowns under
+                20% for optimal psychological management.
+              </p>
             </div>
-          </div>
+          </Card>
 
-          <div className="bg-[#141414] border border-neutral-800 rounded-xl p-6">
-            <h3 className="text-lg font-bold text-white mb-4">Trade Expectancy</h3>
-            <div className="space-y-4">
+          <Card title="Trade Expectancy">
+            <div className="space-y-3">
               <div className="flex items-center justify-between p-3 bg-[#0a0a0a] rounded-lg">
                 <div>
                   <div className="text-xs text-neutral-400 mb-1">Expectancy per Trade</div>
-                  <div className={`text-2xl font-bold ${advanced.expectancy >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
-                    ${advanced.expectancy || '0.00'}
+                  <div className={`text-xl sm:text-2xl font-bold tabular-nums ${advanced.expectancy >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                    ${advanced.expectancy || "0.00"}
                   </div>
                 </div>
                 <div className="text-right">
                   <div className="text-xs text-neutral-400 mb-1">Avg R-Multiple</div>
-                  <div className={`text-2xl font-bold ${advanced.avg_r_multiple >= 0.5 ? 'text-emerald-500' : 'text-yellow-500'}`}>
-                    {advanced.avg_r_multiple || '0.00'}R
+                  <div className={`text-xl sm:text-2xl font-bold tabular-nums ${advanced.avg_r_multiple >= 0.5 ? "text-emerald-400" : "text-yellow-400"}`}>
+                    {advanced.avg_r_multiple || "0.00"}R
                   </div>
                 </div>
               </div>
               <div className="flex items-center justify-between p-3 bg-[#0a0a0a] rounded-lg">
                 <div className="text-sm text-neutral-300">Win/Loss Ratio</div>
-                <div className="text-xl font-bold text-blue-500">
-                  {advanced.win_loss_ratio || '0.00'}:1
+                <div className="text-lg sm:text-xl font-bold text-blue-400 tabular-nums">
+                  {advanced.win_loss_ratio || "0.00"}:1
                 </div>
               </div>
-              <div className="text-xs text-neutral-500 p-3 bg-neutral-900/30 rounded-lg">
-                💡 Positive expectancy is required for long-term profitability. Above 0.50 is strong.
-              </div>
+              <p className="text-xs text-neutral-500 p-3 bg-neutral-900/30 rounded-lg">
+                Positive expectancy is required for long-term profitability.
+                Above 0.50 is strong.
+              </p>
             </div>
-          </div>
+          </Card>
         </div>
 
-        {/* Streak Analysis */}
-        <div className="mb-6 bg-[#141414] border border-neutral-800 rounded-xl p-6">
-          <h3 className="text-lg font-bold text-white mb-4">Streak Analysis</h3>
-          <div className="grid gap-4 sm:grid-cols-3">
+        <Card title="Streak Analysis" className="mb-6">
+          <div className="grid gap-4 grid-cols-1 sm:grid-cols-3">
             <div className="bg-[#0a0a0a] border border-neutral-800 rounded-lg p-4">
               <div className="text-xs text-neutral-400 mb-2">Max Win Streak</div>
-              <div className="text-3xl font-bold text-emerald-500 mb-1">{advanced.max_win_streak || 0}</div>
+              <div className="text-2xl sm:text-3xl font-bold text-emerald-400 mb-1 tabular-nums">
+                {advanced.max_win_streak || 0}
+              </div>
               <div className="text-xs text-neutral-500">consecutive wins</div>
             </div>
             <div className="bg-[#0a0a0a] border border-neutral-800 rounded-lg p-4">
               <div className="text-xs text-neutral-400 mb-2">Max Loss Streak</div>
-              <div className="text-3xl font-bold text-red-500 mb-1">{advanced.max_loss_streak || 0}</div>
+              <div className="text-2xl sm:text-3xl font-bold text-red-400 mb-1 tabular-nums">
+                {advanced.max_loss_streak || 0}
+              </div>
               <div className="text-xs text-neutral-500">consecutive losses</div>
             </div>
             <div className="bg-[#0a0a0a] border border-neutral-800 rounded-lg p-4">
               <div className="text-xs text-neutral-400 mb-2">Expected Loss Streak</div>
-              <div className="text-3xl font-bold text-yellow-500 mb-1">{advanced.expected_loss_streak || 0}</div>
+              <div className="text-2xl sm:text-3xl font-bold text-yellow-400 mb-1 tabular-nums">
+                {advanced.expected_loss_streak || 0}
+              </div>
               <div className="text-xs text-neutral-500">probabilistic estimate</div>
             </div>
           </div>
-          <div className="mt-4 text-xs text-neutral-500 p-3 bg-neutral-900/30 rounded-lg">
-            💡 With {overallStats.winrate_percent}% win rate, expect {Math.ceil(advanced.expected_loss_streak || 0)} consecutive losses eventually. Position sizing must survive this.
-          </div>
-        </div>
+          <p className="mt-4 text-xs text-neutral-500 p-3 bg-neutral-900/30 rounded-lg">
+            With {overallStats.winrate_percent}% win rate, expect ~
+            {Math.ceil(advanced.expected_loss_streak || 0)} consecutive losses
+            eventually. Size positions to survive this.
+          </p>
+        </Card>
 
-        {/* Strategy Performance */}
-        {overallStats?.strategy_performance && Object.keys(overallStats.strategy_performance).length > 0 && (
-          <div className="mb-6 bg-[#141414] border border-neutral-800 rounded-xl p-6">
-            <h3 className="text-lg font-bold text-white mb-4">Strategy Performance</h3>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {Object.entries(overallStats.strategy_performance).map(([name, stats]) => (
-                <div key={name} className="bg-[#0a0a0a] border border-neutral-800 rounded-lg p-4 hover:border-neutral-700 transition-colors">
-                  <div className="font-bold text-base text-white mb-3">{name}</div>
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-neutral-400">Win Rate</span>
-                      <span className="text-base font-bold text-emerald-500">{stats.winrate}%</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-neutral-400">Trades</span>
-                      <span className="text-base font-bold text-white">{stats.count}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-neutral-400">Avg P&L</span>
-                      <span className={`text-base font-bold ${stats.avg_pnl >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
-                        ${stats.avg_pnl}
-                      </span>
-                    </div>
+        {hourlyBins.some((b) => b.count > 0) && (
+          <Card title="Hourly Performance" subtitle="P&L by hour of day (UTC)" className="mb-6">
+            <div className="grid grid-cols-12 sm:grid-cols-24 gap-1">
+              {hourlyBins.map((b) => {
+                const intensity = Math.min(1, Math.abs(b.pnl) / maxAbsPnl);
+                const bg =
+                  b.count === 0
+                    ? "bg-neutral-900/40"
+                    : b.pnl >= 0
+                      ? "bg-emerald-500"
+                      : "bg-red-500";
+                const opacity = b.count === 0 ? 1 : 0.15 + intensity * 0.85;
+                const label = b.count
+                  ? `${b.count} trade${b.count !== 1 ? "s" : ""} · ${b.pnl >= 0 ? "+" : "-"}$${Math.abs(b.pnl).toFixed(2)} · ${b.winrate}%`
+                  : "no trades";
+                return (
+                  <div
+                    key={b.hour}
+                    title={`${String(b.hour).padStart(2, "0")}:00 — ${label}`}
+                    className={`aspect-square rounded ${bg} flex flex-col items-center justify-center`}
+                    style={{ opacity }}
+                  >
+                    <span className="text-[9px] sm:text-[10px] font-semibold text-white/90 tabular-nums">
+                      {String(b.hour).padStart(2, "0")}
+                    </span>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
-          </div>
+            <div className="mt-3 flex items-center gap-3 text-xs text-neutral-400">
+              <span className="inline-flex items-center gap-1">
+                <span className="w-3 h-3 rounded bg-emerald-500" /> Profit
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <span className="w-3 h-3 rounded bg-red-500" /> Loss
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <span className="w-3 h-3 rounded bg-neutral-900/70 border border-neutral-700" />{" "}
+                No trades
+              </span>
+            </div>
+          </Card>
         )}
 
-        {/* Session Performance */}
+        {overallStats?.strategy_performance &&
+          Object.keys(overallStats.strategy_performance).length > 0 && (
+            <Card title="Strategy Performance" className="mb-6">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {Object.entries(overallStats.strategy_performance).map(([name, stats]) => (
+                  <div key={name} className="bg-[#0a0a0a] border border-neutral-800 rounded-lg p-4">
+                    <div className="font-bold text-base text-white mb-3 truncate">{name}</div>
+                    <dl className="space-y-1.5">
+                      <div className="flex items-center justify-between text-sm">
+                        <dt className="text-xs text-neutral-400">Win Rate</dt>
+                        <dd className="font-bold text-emerald-400 tabular-nums">{stats.winrate}%</dd>
+                      </div>
+                      <div className="flex items-center justify-between text-sm">
+                        <dt className="text-xs text-neutral-400">Trades</dt>
+                        <dd className="font-bold text-white tabular-nums">{stats.count}</dd>
+                      </div>
+                      <div className="flex items-center justify-between text-sm">
+                        <dt className="text-xs text-neutral-400">Avg P&L</dt>
+                        <dd className={`font-bold tabular-nums ${stats.avg_pnl >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                          ${stats.avg_pnl}
+                        </dd>
+                      </div>
+                    </dl>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
+
         {sessionStats && Object.keys(sessionStats).length > 0 && (
-          <div className="mb-6 bg-[#141414] border border-neutral-800 rounded-xl p-6">
-            <h3 className="text-lg font-bold text-white mb-4">Session Performance</h3>
+          <Card title="Session Performance" className="mb-6">
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {Object.entries(sessionStats).map(([session, stats]) => (
-                <div key={session} className="bg-[#0a0a0a] border border-neutral-800 rounded-lg p-4 hover:border-neutral-700 transition-colors">
-                  <div className="flex items-center justify-between mb-2">
+                <div key={session} className="bg-[#0a0a0a] border border-neutral-800 rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-3">
                     <div className="font-bold text-base text-white">{session}</div>
                     <div className="text-xs text-neutral-400">{stats.count} trades</div>
                   </div>
-                  <div className="flex items-center gap-4">
-                    <div className="flex-1">
+                  <div className="flex items-center gap-6">
+                    <div>
                       <div className="text-xs text-neutral-400 mb-1">Win Rate</div>
-                      <div className="text-base font-bold text-emerald-500">{stats.winrate}%</div>
+                      <div className="text-base font-bold text-emerald-400 tabular-nums">
+                        {stats.winrate}%
+                      </div>
                     </div>
-                    <div className="flex-1">
+                    <div>
                       <div className="text-xs text-neutral-400 mb-1">Total P&L</div>
-                      <div className={`text-base font-bold ${stats.pnl >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
-                        ${stats.pnl.toFixed(2)}
+                      <div
+                        className={`text-base font-bold tabular-nums ${
+                          stats.pnl >= 0 ? "text-emerald-400" : "text-red-400"
+                        }`}
+                      >
+                        ${Number(stats.pnl).toFixed(2)}
                       </div>
                     </div>
                   </div>
                 </div>
               ))}
             </div>
-          </div>
+          </Card>
         )}
 
-        {/* Symbol Performance */}
         {symbolStats && Object.keys(symbolStats).length > 0 && (
-          <div className="bg-[#141414] border border-neutral-800 rounded-xl overflow-hidden">
-            <div className="p-6 border-b border-neutral-800">
-              <h3 className="text-lg font-bold text-white">Performance by Symbol</h3>
-            </div>
+          <Card title="Performance by Symbol" padding="p-0">
             <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-[#0a0a0a]">
+              <table className="w-full text-sm">
+                <thead className="bg-[#0f0f0f] text-xs uppercase tracking-wide text-neutral-400">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-neutral-400 uppercase">Symbol</th>
-                    <th className="px-4 py-3 text-center text-xs font-semibold text-neutral-400 uppercase">Trades</th>
-                    <th className="px-4 py-3 text-center text-xs font-semibold text-neutral-400 uppercase">Wins</th>
-                    <th className="px-4 py-3 text-center text-xs font-semibold text-neutral-400 uppercase">Win Rate</th>
-                    <th className="px-4 py-3 text-right text-xs font-semibold text-neutral-400 uppercase">Avg P&L</th>
-                    <th className="px-4 py-3 text-right text-xs font-semibold text-neutral-400 uppercase">Total P&L</th>
+                    <th className="text-left px-4 py-3">Symbol</th>
+                    <th className="text-center px-4 py-3">Trades</th>
+                    <th className="text-center px-4 py-3 hidden sm:table-cell">Wins</th>
+                    <th className="text-center px-4 py-3">Win Rate</th>
+                    <th className="text-right px-4 py-3 hidden md:table-cell">Avg P&L</th>
+                    <th className="text-right px-4 py-3">Total P&L</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-neutral-800">
                   {Object.entries(symbolStats)
                     .sort((a, b) => b[1].pnl - a[1].pnl)
                     .map(([symbol, stats]) => (
-                      <tr key={symbol} className="hover:bg-[#0a0a0a] transition-colors">
-                        <td className="px-4 py-3 text-sm font-bold text-white">{symbol}</td>
-                        <td className="px-4 py-3 text-sm text-center text-neutral-300">{stats.count}</td>
-                        <td className="px-4 py-3 text-sm text-center text-neutral-300">{stats.wins}</td>
-                        <td className="px-4 py-3 text-sm text-center">
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-500">
+                      <tr key={symbol} className="hover:bg-[#0f0f0f] transition-colors">
+                        <td className="px-4 py-3 font-bold text-white">{symbol}</td>
+                        <td className="px-4 py-3 text-center tabular-nums text-neutral-300">{stats.count}</td>
+                        <td className="px-4 py-3 text-center tabular-nums text-neutral-300 hidden sm:table-cell">{stats.wins}</td>
+                        <td className="px-4 py-3 text-center">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
                             {stats.winrate}%
                           </span>
                         </td>
-                        <td className={`px-4 py-3 text-sm text-right font-medium ${stats.avg_pnl >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                        <td className={`px-4 py-3 text-right font-medium tabular-nums hidden md:table-cell ${stats.avg_pnl >= 0 ? "text-emerald-400" : "text-red-400"}`}>
                           ${stats.avg_pnl}
                         </td>
-                        <td className={`px-4 py-3 text-sm text-right font-bold ${stats.pnl >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
-                          ${stats.pnl.toFixed(2)}
+                        <td className={`px-4 py-3 text-right font-bold tabular-nums ${stats.pnl >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                          ${Number(stats.pnl).toFixed(2)}
                         </td>
                       </tr>
                     ))}
                 </tbody>
               </table>
             </div>
-          </div>
+          </Card>
         )}
       </main>
     </div>
